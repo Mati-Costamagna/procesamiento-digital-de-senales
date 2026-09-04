@@ -1,0 +1,62 @@
+# Build output
+
+Debug/
+
+Release/
+
+
+# Eclipse metadata
+
+.metadata/
+
+.binaries/
+
+.recommenders/
+
+
+# Compilación
+
+*.o
+
+*.d
+
+*.elf
+
+*.map
+
+*.axf
+
+*.bin
+
+*.hex
+
+*.lst
+
+
+# Logs / temporales
+
+*.log
+
+*.tmp
+
+*.bak
+
+*.swp
+
+*~
+
+
+# OS
+
+Thumbs.db
+
+Desktop.ini
+
+.DS_Store
+
+
+# IDEs externos
+
+.vscode/
+
+.idea/
