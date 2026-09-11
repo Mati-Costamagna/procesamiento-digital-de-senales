@@ -15,6 +15,9 @@
 #include "pin_mux.h"
 #include "clock_config.h"
 #include "fsl_debug_console.h"
+#include "arm_math.h"
+#include "fsl_ctimer.h"
+#include "fsl_lpadc.h"
 /* TODO: insert other include files here. */
 
 /* TODO: insert other definitions and declarations here. */
@@ -35,13 +38,15 @@
 int state_counter = 0;
 int flag_adc = 0;
 
-uint16_t samples[SAMPLES_NUM];
+uint32_t sample_vel[5] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
+q15_t samples[SAMPLES_NUM];
+
 
 void setup_new_match(int freq){
 
-	match_val = (FREQ_MAX / freq) - 1;
+	uint32_t match_val = (MAX_FREQ / freq) - 1;
 	CTIMER_StopTimer(CTIMER0_PERIPHERAL);
-	const ctimer_match_config_t CTIMER0_Match_0_config = {
+	const ctimer_match_config_t CTIMER0_Match_3_config = {
 	  .matchValue = match_val,
 	  .enableCounterReset = true,
 	  .enableCounterStop = false,
@@ -49,38 +54,34 @@ void setup_new_match(int freq){
 	  .outPinInitState = false,
 	  .enableInterrupt = true
 	};
-	CTIMER_SetupMatch(CTIMER0_PERIPHERAL, CTIMER0_MATCH_0_CHANNEL, &CTIMER0_Match_0_config);
+	CTIMER_SetupMatch(CTIMER0_PERIPHERAL, CTIMER0_MATCH_3_CHANNEL, &CTIMER0_Match_3_config);
 	CTIMER_StartTimer(CTIMER0_PERIPHERAL);
 }
+
 
 void set_state(int state_number){
 	switch (state_number) {
 			case 0:
-				setup_new_match(VEL_0);
 				GPIO_PinWrite(GPIO0, LED_RED_PIN, 1);
 				GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 0);
 				GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 1);
 				break;
 			case 1:
-				setup_new_match(VEL_1);
 				GPIO_PinWrite(GPIO0, LED_RED_PIN, 0);
 				GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 0);
 				GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 1);
 				break;
 			case 2:
-				setup_new_match(VEL_2);
 				GPIO_PinWrite(GPIO0, LED_RED_PIN, 1);
 				GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 1);
 				GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 0);
 				break;
 			case 3:
-				setup_new_match(VEL_3);
 				GPIO_PinWrite(GPIO0, LED_RED_PIN, 0);
 				GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 1);
 				GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 1);
 				break;
 			default:
-				setup_new_match(VEL_4);
 				GPIO_PinWrite(GPIO0, LED_RED_PIN, 0);
 				GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 0);
 				GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 0);
@@ -94,8 +95,9 @@ void GPIO0_INT_0_IRQHANDLER(void) {
   uint32_t pin_flags0 = GPIO_GpioGetInterruptChannelFlags(GPIO0, 0U);
 
   /* Place your interrupt code here */
-  state_counter = (state_counter + 1) % 5;
-  /* Clear pin flags 0 */
+  state_counter = (state_counter + 1) % (sizeof(sample_vel) / sizeof(sample_vel[0]));
+  setup_new_match(sample_vel[state_counter]);
+  set_state(state_counter);  /* Clear pin flags 0 */
   GPIO_GpioClearInterruptChannelFlags(GPIO0, pin_flags0, 0U);
 
   /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
@@ -136,13 +138,15 @@ void ADC0_IRQHANDLER(void) {
   LPADC_ClearStatusFlags(ADC0_PERIPHERAL, status_flag);
 
   /* Place your code here */
-  static sample_count = 0;
+  static uint16_t sample_count = 0;
   lpadc_conv_result_t result;
-  LPADC_GetConvResultBlocking(ADC0_PERIPHERAL, &result);
+  LPADC_GetConvResultBlocking(ADC0_PERIPHERAL, &result, 0);
   if (flag_adc){
-	  samples[sample_count] = result.convValue;
+	  samples[sample_count] = (q15_t)result.convValue;
 	  sample_count = (sample_count + 1) % SAMPLES_NUM;
   }
+  PRINTF("%d \n", state_counter);
+  PRINTF("%d \n", samples[sample_count]);
 
   /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
      Store immediate overlapping exception return operation might vector to incorrect interrupt. */
@@ -168,13 +172,13 @@ int main(void) {
     BOARD_InitDebugConsole();
 #endif
 
+    setup_new_match(sample_vel[0]);
     PRINTF("Hello World\r\n");
 
 
     /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
-    	set_pin_color(state_counter);
-    	PRINTF("%d", state_counter);
+//    	PRINTF("%d", state_counter);
     }
     return 0 ;
 }

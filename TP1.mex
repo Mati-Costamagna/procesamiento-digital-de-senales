@@ -1155,7 +1155,7 @@
                      </config_set>
                   </instance>
                   <instance name="VREF0" uuid="db63eca4-7550-4843-acd7-44353d861c60" type="vref_1" type_id="vref_1_2.1.0" mode="general" peripheral="VREF0" enabled="false" comment="" custom_name_enabled="false" editing_lock="false">
-                     <config_set name="fsl_vref" quick_selection="default">
+                     <config_set name="fsl_vref">
                         <struct name="vref_config">
                            <setting name="bufferMode" value="kVREF_ModeHighPowerBuffer"/>
                            <setting name="enableInternalVoltageRegulator" value="true"/>
@@ -1163,6 +1163,20 @@
                            <setting name="vrefSel" value="kVREF_InternalBandgap"/>
                            <setting name="initTrim" value="false"/>
                         </struct>
+                     </config_set>
+                  </instance>
+                  <instance name="GPIO0_ALIAS1" uuid="6c856396-6a2c-4963-b0b5-027ceb261922" type="gpio_adapter" type_id="gpio_adapter_1.0.1" mode="GPIO" peripheral="GPIO0_ALIAS1" enabled="false" comment="" custom_name_enabled="false" editing_lock="false">
+                     <config_set name="fsl_adapter_gpio" quick_selection="QuickSelection1">
+                        <set name="signalsFilter">
+                           <selected>
+                              <id>default</id>
+                              <id>boot</id>
+                           </selected>
+                        </set>
+                        <array name="gpioSignalsParameters"/>
+                        <array name="gpioPinsOverView"/>
+                        <struct name="globalCfg"/>
+                        <array name="differentPeripheralsAdd"/>
                      </config_set>
                   </instance>
                </instances>
