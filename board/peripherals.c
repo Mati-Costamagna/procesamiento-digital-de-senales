@@ -147,16 +147,16 @@ instance:
       - mode: 'kCTIMER_TimerMode'
       - clockSource: 'FunctionClock'
       - clockSourceFreq: 'BOARD_BootClockPLL150M'
-      - timerPrescaler: '150'
+      - timerPrescaler: '1'
     - EnableTimerInInit: 'true'
     - matchChannels:
       - 0:
         - matchChannelPrefixId: 'Match_3'
         - matchChannel: 'kCTIMER_Match_3'
-        - matchValueStr: '8kHz'
+        - matchValueStr: '16kHz'
         - enableCounterReset: 'true'
         - enableCounterStop: 'false'
-        - outControl: 'kCTIMER_Output_NoAction'
+        - outControl: 'kCTIMER_Output_Toggle'
         - outPinInitValue: 'low'
         - enableInterrupt: 'false'
     - captureChannels: []
@@ -172,13 +172,13 @@ instance:
 const ctimer_config_t CTIMER0_config = {
   .mode = kCTIMER_TimerMode,
   .input = kCTIMER_Capture_0,
-  .prescale = 149
+  .prescale = 0
 };
 const ctimer_match_config_t CTIMER0_Match_3_config = {
-  .matchValue = 124,
+  .matchValue = 9374,
   .enableCounterReset = true,
   .enableCounterStop = false,
-  .outControl = kCTIMER_Output_NoAction,
+  .outControl = kCTIMER_Output_Toggle,
   .outPinInitState = false,
   .enableInterrupt = false
 };
@@ -242,12 +242,12 @@ instance:
         - hardwareCompareValueHigh: '0'
         - hardwareCompareValueLow: '0'
         - conversionResoultuionMode: 'kLPADC_ConversionResolutionStandard'
-        - enableWaitTrigger: 'false'
+        - enableWaitTrigger: 'true'
     - lpadcConvTriggerConfig:
       - 0:
         - user_triggerId: ''
         - triggerId: '0'
-        - targetCommandId: '0'
+        - targetCommandId: '1'
         - delayPower: '0'
         - priority: 'false'
         - channelAFIFOSelect: '0'
@@ -292,12 +292,12 @@ lpadc_conv_command_config_t ADC0_commandsConfig[1] = {
     .hardwareCompareValueHigh = 0UL,
     .hardwareCompareValueLow = 0UL,
     .conversionResolutionMode = kLPADC_ConversionResolutionStandard,
-    .enableWaitTrigger = false
+    .enableWaitTrigger = true
   }
 };
 lpadc_conv_trigger_config_t ADC0_triggersConfig[1] = {
   {
-    .targetCommandId = 0,
+    .targetCommandId = 1,
     .delayPower = 0UL,
     .channelAFIFOSelect = 0,
     .channelBFIFOSelect = 0,
@@ -338,16 +338,16 @@ instance:
       - fifoWatermarkLevel: '0'
       - fifoTriggerMode: 'kDAC_FIFOTriggerByHardwareMode'
       - fifoWorkMode: 'kDAC_FIFODisabled'
-      - referenceVoltageSource: 'kDAC_ReferenceVoltageSourceAlt1'
+      - referenceVoltageSource: 'kDAC_ReferenceVoltageSourceAlt3'
       - referenceCurrentSource: 'kDAC_ReferenceCurrentSourcePtat'
-      - enableOpampBuffer: 'false'
+      - enableOpampBuffer: 'true'
       - periodicTriggerNumber: '0'
       - periodicTriggerWidth: '0'
-      - syncTime: '0'
+      - syncTime: '1'
       - enableLowerLowPowerMode: 'false'
     - enable_dma: 'false'
     - dac_dma: 'kDAC_FIFOEmptyDMAEnable'
-    - enable_DAC: 'false'
+    - enable_DAC: 'true'
     - enable_convert: 'false'
     - convert_value: '0'
     - interrupt_config:
@@ -359,19 +359,18 @@ instance:
         - enable_priority: 'false'
         - priority: '0'
         - enable_custom_name: 'false'
-    - quick_selection: 'default'
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */
 const dac_config_t DAC0_config = {
   .fifoWatermarkLevel = 0UL,
   .fifoTriggerMode = kDAC_FIFOTriggerByHardwareMode,
   .fifoWorkMode = kDAC_FIFODisabled,
-  .referenceVoltageSource = kDAC_ReferenceVoltageSourceAlt1,
+  .referenceVoltageSource = kDAC_ReferenceVoltageSourceAlt3,
   .referenceCurrentSource = kDAC_ReferenceCurrentSourcePtat,
-  .enableOpampBuffer = false,
+  .enableOpampBuffer = true,
   .periodicTriggerNumber = 0UL,
   .periodicTriggerWidth = 0UL,
-  .syncTime = 0UL,
+  .syncTime = 1UL,
   .enableLowerLowPowerMode = false,
 };
 
@@ -380,6 +379,45 @@ static void DAC0_init(void) {
   SPC_EnableActiveModeAnalogModules(SPC0, kSPC_controlDac0);
   /* Initialize the LPDAC */
   DAC_Init(DAC0_PERIPHERAL, &DAC0_config);
+  /* Enable the LPDAC */
+  DAC_Enable(DAC0_PERIPHERAL, true);
+}
+
+/***********************************************************************************************************************
+ * VREF0 initialization code
+ **********************************************************************************************************************/
+/* clang-format off */
+/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
+instance:
+- name: 'VREF0'
+- type: 'vref_1'
+- mode: 'general'
+- custom_name_enabled: 'false'
+- type_id: 'vref_1_2.1.0'
+- functional_group: 'BOARD_InitPeripherals'
+- peripheral: 'VREF0'
+- config_sets:
+  - fsl_vref:
+    - vref_config:
+      - bufferMode: 'kVREF_ModeHighPowerBuffer'
+      - enableInternalVoltageRegulator: 'true'
+      - enableVrefOut: 'true'
+      - vrefSel: 'kVREF_LowPowerBufferMode'
+      - initTrim: 'false'
+ * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
+/* clang-format on */
+
+static void VREF0_init(void) {
+	/* Power up VREF */
+	vref_config_t vrefConfig;
+
+	/* enable VREF */
+	SPC_EnableActiveModeAnalogModules(SPC0, kSPC_controlVref);
+
+	VREF_GetDefaultConfig(&vrefConfig);
+	vrefConfig.bufferMode = kVREF_ModeBandgapOnly;
+	/* Initialize VREF module, the VREF module is only used to supply the bias current for LPADC. */
+	VREF_Init(VREF0_PERIPHERAL, &vrefConfig);
 }
 
 /***********************************************************************************************************************
@@ -392,6 +430,7 @@ void BOARD_InitPeripherals(void)
   CTIMER0_init();
   ADC0_init();
   DAC0_init();
+  VREF0_init();
 }
 
 /***********************************************************************************************************************

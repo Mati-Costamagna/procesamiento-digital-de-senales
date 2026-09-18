@@ -18,16 +18,18 @@
 #include "arm_math.h"
 #include "fsl_ctimer.h"
 #include "fsl_lpadc.h"
+//#include "fsl_vref.h"
+#include "fsl_dac.h"
 /* TODO: insert other include files here. */
 
 /* TODO: insert other definitions and declarations here. */
-#define MAX_FREQ 1e6
+#define MAX_FREQ CLOCK_GetCTimerClkFreq(0)
 
-#define VEL_0 	8e3
-#define VEL_1 	16e3
-#define VEL_2	22e3
-#define VEL_3	44e3
-#define VEL_4	48e3
+#define VEL_0 	2*(8e3)
+#define VEL_1 	2*(16e3)
+#define VEL_2	2*(22e3)
+#define VEL_3	2*(44e3)
+#define VEL_4	2*(48e3)
 
 #define LED_RED_PIN BOARD_INITLEDSPINS_LED_RED_PIN
 #define LED_GREEN_PIN BOARD_INITLEDSPINS_LED_GREEN_PIN
@@ -35,12 +37,14 @@
 
 #define SAMPLES_NUM 512
 
-int state_counter = 0;
-int flag_adc = 0;
+volatile int state_counter = 0;
+volatile int flag_adc = 0;
+
+volatile uint32_t last_adc = 0;   /* global */
+volatile uint32_t last_dac = 0;   /* global */
 
 uint32_t sample_vel[5] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
-q15_t samples[SAMPLES_NUM];
-
+volatile q15_t samples[SAMPLES_NUM];
 
 void setup_new_match(int freq){
 
@@ -50,9 +54,9 @@ void setup_new_match(int freq){
 	  .matchValue = match_val,
 	  .enableCounterReset = true,
 	  .enableCounterStop = false,
-	  .outControl = kCTIMER_Output_NoAction,
+	  .outControl = kCTIMER_Output_Toggle,
 	  .outPinInitState = false,
-	  .enableInterrupt = true
+	  .enableInterrupt = false
 	};
 	CTIMER_SetupMatch(CTIMER0_PERIPHERAL, CTIMER0_MATCH_3_CHANNEL, &CTIMER0_Match_3_config);
 	CTIMER_StartTimer(CTIMER0_PERIPHERAL);
@@ -139,14 +143,18 @@ void ADC0_IRQHANDLER(void) {
 
   /* Place your code here */
   static uint16_t sample_count = 0;
+  static uint16_t dac_count = 0;
   lpadc_conv_result_t result;
   LPADC_GetConvResultBlocking(ADC0_PERIPHERAL, &result, 0);
+  last_adc = (result.convValue >> 3) & 0x0FFF;
+  uint32_t dac_value = (uint32_t)(samples[dac_count] >> 3) & 0x0FFF;
+  DAC_SetData(DAC0, dac_value);
+  dac_count = (dac_count + 1) % SAMPLES_NUM;
+  last_dac = dac_value;
   if (flag_adc){
 	  samples[sample_count] = (q15_t)result.convValue;
 	  sample_count = (sample_count + 1) % SAMPLES_NUM;
   }
-  PRINTF("%d \n", state_counter);
-  PRINTF("%d \n", samples[sample_count]);
 
   /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
      Store immediate overlapping exception return operation might vector to incorrect interrupt. */
@@ -172,13 +180,15 @@ int main(void) {
     BOARD_InitDebugConsole();
 #endif
 
-    setup_new_match(sample_vel[0]);
-    PRINTF("Hello World\r\n");
-
+    set_state(0);
+    CTIMER_StopTimer(CTIMER0);
+    LPADC_DoOffsetCalibration(ADC0);
+    LPADC_DoAutoCalibration(ADC0);
+    CTIMER_StartTimer(CTIMER0);
 
     /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
-//    	PRINTF("%d", state_counter);
+    	PRINTF("ADC: %d  DAC: %d\r\n", last_adc, last_dac);
     }
     return 0 ;
 }

@@ -25,6 +25,9 @@ extern "C" {
  */
 void BOARD_InitBootPins(void);
 
+#define PCR_IBE_ibe0 0x00u /*!<@brief Input Buffer Enable: Disables */
+#define PCR_IBE_ibe1 0x01u /*!<@brief Input Buffer Enable: Enables */
+
 /*! @name PORT1_8 (coord A1), P1_8/J9[32]
   @{ */
 
