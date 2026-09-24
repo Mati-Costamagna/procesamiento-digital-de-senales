@@ -906,7 +906,7 @@
          </dcdx_profile>
          <dcdx_configurations/>
       </dcdx>
-      <periphs name="Peripherals" version="15.0" enabled="true" update_project_code="true">
+      <periphs name="Peripherals" version="15.0" enabled="true" update_project_code="false">
          <dependencies>
             <dependency resourceType="SWComponent" resourceId="platform.drivers.gpio" description="GPIO Driver is not found in the toolchain/IDE project. The project will not compile!" problem_level="2" source="Peripherals">
                <feature name="enabled" evaluation="equal">
@@ -1069,7 +1069,7 @@
                            <struct name="0">
                               <setting name="matchChannelPrefixId" value="Match_3"/>
                               <setting name="matchChannel" value="kCTIMER_Match_3"/>
-                              <setting name="matchValueStr" value="16kHz"/>
+                              <setting name="matchValueStr" value="96kHz"/>
                               <setting name="enableCounterReset" value="true"/>
                               <setting name="enableCounterStop" value="false"/>
                               <setting name="outControl" value="kCTIMER_Output_Toggle"/>
@@ -1096,11 +1096,11 @@
                            <setting name="clockSourceFreq" value="BOARD_BootClockPLL150M"/>
                            <setting name="enableInDozeMode" value="true"/>
                            <setting name="conversionAverageMode" value="kLPADC_ConversionAverage1"/>
-                           <setting name="offsetCalibration" value="no"/>
-                           <setting name="autoCalibrate" value="false"/>
+                           <setting name="offsetCalibration" value="yes"/>
+                           <setting name="autoCalibrate" value="true"/>
                            <setting name="enableAnalogPreliminary" value="false"/>
                            <setting name="powerUpDelay" value="0x80"/>
-                           <setting name="referenceVoltageSource" value="kLPADC_ReferenceVoltageAlt1"/>
+                           <setting name="referenceVoltageSource" value="kLPADC_ReferenceVoltageAlt3"/>
                            <setting name="powerLevelMode" value="kLPADC_PowerLevelAlt1"/>
                            <setting name="triggerPriorityPolicy" value="kLPADC_ConvPreemptImmediatelyNotAutoResumed"/>
                            <setting name="enableConvPause" value="false"/>
@@ -1126,7 +1126,7 @@
                               <setting name="hardwareCompareMode" value="kLPADC_HardwareCompareDisabled"/>
                               <setting name="hardwareCompareValueHigh" value="0"/>
                               <setting name="hardwareCompareValueLow" value="0"/>
-                              <setting name="conversionResoultuionMode" value="kLPADC_ConversionResolutionStandard"/>
+                              <setting name="conversionResoultuionMode" value="kLPADC_ConversionResolutionHigh"/>
                               <setting name="enableWaitTrigger" value="true"/>
                            </struct>
                         </array>
@@ -1165,7 +1165,7 @@
                            <setting name="fifoWatermarkLevel" value="0"/>
                            <setting name="fifoTriggerMode" value="kDAC_FIFOTriggerByHardwareMode"/>
                            <setting name="fifoWorkMode" value="kDAC_FIFODisabled"/>
-                           <setting name="referenceVoltageSource" value="kDAC_ReferenceVoltageSourceAlt3"/>
+                           <setting name="referenceVoltageSource" value="kDAC_ReferenceVoltageSourceAlt1"/>
                            <setting name="referenceCurrentSource" value="kDAC_ReferenceCurrentSourcePtat"/>
                            <setting name="enableOpampBuffer" value="true"/>
                            <setting name="periodicTriggerNumber" value="0"/>

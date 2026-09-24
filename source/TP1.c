@@ -18,18 +18,17 @@
 #include "arm_math.h"
 #include "fsl_ctimer.h"
 #include "fsl_lpadc.h"
-//#include "fsl_vref.h"
 #include "fsl_dac.h"
 /* TODO: insert other include files here. */
 
 /* TODO: insert other definitions and declarations here. */
 #define MAX_FREQ CLOCK_GetCTimerClkFreq(0)
 
-#define VEL_0 	2*(8e3)
-#define VEL_1 	2*(16e3)
-#define VEL_2	2*(22e3)
-#define VEL_3	2*(44e3)
-#define VEL_4	2*(48e3)
+#define VEL_0 	9375
+#define VEL_1 	4687
+#define VEL_2	3409
+#define VEL_3	1704
+#define VEL_4	1562
 
 #define LED_RED_PIN BOARD_INITLEDSPINS_LED_RED_PIN
 #define LED_GREEN_PIN BOARD_INITLEDSPINS_LED_GREEN_PIN
@@ -38,7 +37,7 @@
 #define SAMPLES_NUM 512
 
 volatile int state_counter = 0;
-volatile int flag_adc = 0;
+volatile int flag_adc = 1;
 
 volatile uint32_t last_adc = 0;   /* global */
 volatile uint32_t last_dac = 0;   /* global */
@@ -46,9 +45,9 @@ volatile uint32_t last_dac = 0;   /* global */
 uint32_t sample_vel[5] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
 volatile q15_t samples[SAMPLES_NUM];
 
-void setup_new_match(int freq){
+void setup_new_match(int m_val){
 
-	uint32_t match_val = (MAX_FREQ / freq) - 1;
+	uint32_t match_val = m_val;
 	CTIMER_StopTimer(CTIMER0_PERIPHERAL);
 	const ctimer_match_config_t CTIMER0_Match_3_config = {
 	  .matchValue = match_val,
@@ -59,6 +58,7 @@ void setup_new_match(int freq){
 	  .enableInterrupt = false
 	};
 	CTIMER_SetupMatch(CTIMER0_PERIPHERAL, CTIMER0_MATCH_3_CHANNEL, &CTIMER0_Match_3_config);
+	CTIMER_Reset(CTIMER0_PERIPHERAL);
 	CTIMER_StartTimer(CTIMER0_PERIPHERAL);
 }
 
@@ -128,7 +128,6 @@ void GPIO0_INT_1_IRQHANDLER(void) {
   #endif
 }
 
-/* ADC0_IRQn interrupt handler */
 void ADC0_IRQHANDLER(void) {
   uint32_t trigger_status_flag;
   uint32_t status_flag;
@@ -145,15 +144,13 @@ void ADC0_IRQHANDLER(void) {
   static uint16_t sample_count = 0;
   static uint16_t dac_count = 0;
   lpadc_conv_result_t result;
-  LPADC_GetConvResultBlocking(ADC0_PERIPHERAL, &result, 0);
-  last_adc = (result.convValue >> 3) & 0x0FFF;
-  uint32_t dac_value = (uint32_t)(samples[dac_count] >> 3) & 0x0FFF;
-  DAC_SetData(DAC0, dac_value);
-  dac_count = (dac_count + 1) % SAMPLES_NUM;
-  last_dac = dac_value;
-  if (flag_adc){
-	  samples[sample_count] = (q15_t)result.convValue;
-	  sample_count = (sample_count + 1) % SAMPLES_NUM;
+
+  if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
+  	uint16_t v = (result.convValue >> 4) & 0x0FFF;   /* solo si single-ended 12 bit */
+  	uint16_t out;
+  	if (flag_adc) { samples[sample_count] = (q15_t)result.convValue; sample_count = (sample_count + 1) % SAMPLES_NUM; out = v; }
+  	else          { out = (uint16_t)samples[dac_count]; dac_count = (dac_count + 1) % SAMPLES_NUM; }
+  	DAC_SetData(DAC0, out);
   }
 
   /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
@@ -162,7 +159,6 @@ void ADC0_IRQHANDLER(void) {
     __DSB();
   #endif
 }
-
 
 /*
  * @brief   Application entry point.
@@ -181,14 +177,16 @@ int main(void) {
 #endif
 
     set_state(0);
+    DisableIRQ(ADC0_IRQn);
     CTIMER_StopTimer(CTIMER0);
     LPADC_DoOffsetCalibration(ADC0);
     LPADC_DoAutoCalibration(ADC0);
+    LPADC_DoResetFIFO0(ADC0);
+    EnableIRQ(ADC0_IRQn);
     CTIMER_StartTimer(CTIMER0);
 
-    /* Enter an infinite loop, just incrementing a counter. */
+//    /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
-    	PRINTF("ADC: %d  DAC: %d\r\n", last_adc, last_dac);
     }
     return 0 ;
 }
