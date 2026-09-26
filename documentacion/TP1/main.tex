@@ -1,0 +1,141 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  Laboratorio 1 - Muestreo con MCXN947
+%  Estructura de carpetas esperada:
+%     main.tex
+%     informe-fcefyn.sty
+%     img/   -> logos, capturas de Config Tools y del osciloscopio
+%     src/   -> copia del codigo fuente del proyecto MCUXpresso
+%
+%  Todo lo que aparece entre corchetes rojos (\completar{...}) es contenido
+%  que falta llenar. Para la entrega, descomentar \entregafinal: el
+%  documento avisara en el log si quedo alguna marca sin resolver.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[11pt,a4paper]{article}
+\usepackage{informe-fcefyn}
+
+% \entregafinal
+
+% ------------------------- Datos de la caratula ------------------------------
+\materia{Procesamiento Digital de Señales}
+\carrera{Ingeniería en Computación}
+\subtitulo{Laboratorio 1}
+\tema{Muestreo con MCXN947}
+\plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} SDK MCUXpresso}
+\autor{Costamagna, Matías}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
+\autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
+\autor{Rivera, Mariano}{}{luismarianorivera.25@mi.unc.edu.ar}
+\autor{Rojas, Facundo}{}{@mi.unc.edu.ar}
+% \autor{Apellido, Nombre}{Matrícula}{correo@mi.unc.edu.ar}
+\docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides}
+\fechaentrega{\today}
+\logoizquierdo{img/logo-unc.png}
+\logoderecho{img/logo-fcefyn.png}
+
+% ---------------- Parametros del diseno (usados en las tablas) ---------------
+% Frecuencia de entrada del CTIMER que dispara al ADC [Hz].
+% Si se cambia el reloj en Config Tools, actualizar este valor y la tabla
+% de velocidades se recalcula sola.
+\frecuenciatimer{150000000}
+ 
+\begin{document}
+ 
+\caratula
+\setcounter{tocdepth}{2}
+\tableofcontents
+\clearpage
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introducción}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+\begin{consigna}[Laboratorio 1 \textemdash{} Muestreo con MCXN947]
+\textbf{Objetivo.} Manejar el módulo del conversor A/D integrado en el MCU
+MCXN947.
+ 
+\textbf{Descripción.} Realizar un programa aplicativo que sea capaz de
+digitalizar una señal a través del módulo del ADC disponible en la placa
+MCXN947 a distintas velocidades de muestreo; las velocidades requeridas son
+\qty{8}{\kilo\sps}, \qty{16}{\kilo\sps}, \qty{22}{\kilo\sps},
+\qty{44}{\kilo\sps} y \qty{48}{\kilo\sps}. Los cambios de las velocidades de
+muestreo serán realizados con una de las teclas de la placa de evaluación, en
+forma de un buffer circular. Cada velocidad de muestreo se indicará a través
+de un color RGB del LED. Con otra tecla de la placa se habilitará la
+adquisición o se parará la misma (Run/Stop). Los valores adquiridos serán
+almacenados en memoria en un buffer circular de 512 muestras del tipo q15
+(fraccional de 15 bits) y a su vez serán enviados a través del DAC (de
+12 bits).
+ 
+\textbf{Presentación.}
+\begin{enumerate}[nosep,leftmargin=*]
+  \item Mostrar el programa corriendo.
+  \item Subir un archivo conteniendo lo siguiente:
+  \begin{itemize}[nosep]
+    \item Configuración del ambiente (pantallas con timers, ADC, etc.).
+    \item Diagrama de diseño de la aplicación explicando sus partes.
+    \item Código fuente de la misma con todo el proyecto.
+  \end{itemize}
+\end{enumerate}
+\end{consigna}
+ 
+\subsection{Requerimientos}
+ 
+De la consigna se desprenden los siguientes requerimientos, que se usan como
+guía para el diseño y como lista de verificación en la
+sección~\ref{sec:verificacion}:
+ 
+\begin{enumerate}[label=\textbf{R\arabic*},leftmargin=2.2em]
+  \item \label{req:fs} Muestrear una señal analógica con el ADC a
+        \qtylist{8;16;22;44;48}{\kilo\sps}.
+  \item \label{req:tecla-fs} Recorrer las velocidades en forma circular con
+        una tecla de la placa.
+  \item \label{req:led} Indicar la velocidad activa con un color del LED RGB.
+  \item \label{req:runstop} Habilitar o detener la adquisición con otra tecla
+        (Run/Stop).
+  \item \label{req:buffer} Guardar las muestras en un buffer circular de
+        512 muestras en formato q15.
+  \item \label{req:dac} Enviar cada muestra al DAC de 12 bits.
+\end{enumerate}
+ 
+\subsection{Correspondencia con la presentación}
+ 
+\begin{table}[H]
+\centering
+\caption{Dónde se encuentra cada ítem pedido en la presentación.}
+\label{tab:entregables}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{Ítem pedido} & \textbf{Ubicación en este informe}\\
+\midrule
+Configuración del ambiente & Sección~\ref{sec:ambiente}\\
+Diagrama de diseño de la aplicación & Sección~\ref{sec:diseno}\\
+Código fuente del proyecto & Sección~\ref{sec:implementacion} y
+                             Anexo~\ref{sec:codigo}\\
+Programa corriendo & Demostración en clase; evidencia en
+                     sección~\ref{sec:verificacion}\\
+\bottomrule
+\end{tabular}
+\end{table}
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Configuración del ambiente}\label{sec:ambiente}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+\subsection{Herramientas utilizadas}
+ 
+\begin{table}[H]
+\centering
+\caption{Hardware y software del entorno de trabajo.}
+\label{tab:herramientas}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{Elemento} & \textbf{Versión / modelo}\\
+\midrule
+Placa de evaluación     & FRDM-MCXN947 (Cortex-M33, núcleo \texttt{cm33\_core0})\\
+IDE                     & MCUXpresso IDE \completar{versión}\\
+SDK                     & SDK\_\completar{26.6.0}\_FRDM-MCXN947\\
+Herramientas de config. & MCUXpresso Config Tools (Clocks, Pins, Peripherals)\\
+Proyecto base           & \completar{ejemplo del SDK usado como punto de partida}\\
+Generador de señales    & \completar{marca y modelo}\\
+Osciloscopio            & \completar{marca y modelo}\\
+\bottomrule
+\end{tabular}

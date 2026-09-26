@@ -1,0 +1,82 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  informe-fcefyn.sty
+%  Plantilla de informes - FCEFyN - UNC
+%  Adaptada para laboratorios de Procesamiento Digital de Senales con
+%  microcontroladores NXP MCX (FRDM-MCXN947, MCUXpresso IDE / Config Tools).
+%
+%  Uso:  \usepackage{informe-fcefyn}
+%
+%  Novedades respecto de v1.0 (VHDL):
+%   - Estilo de codigo C embebido (tipos CMSIS/SDK, q15_t, macros del SDK).
+%   - \codigo{} ahora es C por defecto y no rompe si falta el archivo.
+%   - \captura{} para pantallas de MCUXpresso Config Tools.
+%   - \frecuenciatimer{} + \filafs{} -> tabla de velocidades de muestreo
+%     calculada automaticamente (valor de match, fs real y error).
+%   - \led{R}{G}{B} dibuja el color del LED RGB asignado a cada velocidad.
+%   - Estilos TikZ para diagramas de bloques, estados y flujo.
+%   - \completar{} marca en rojo lo que falta llenar antes de entregar.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{informe-fcefyn}[2026/09/26 v1.1 Plantilla de informes FCEFyN-UNC (DSP / MCX)]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 1. PAQUETES BASE
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage[utf8]{inputenc}
+
+% Codificacion T1 + Latin Modern. Si lmodern no esta instalado se usa OT1,
+% porque T1 sin las fuentes EC produce glifos incorrectos en los listados.
+\IfFileExists{lmodern.sty}{%
+  \RequirePackage[T1]{fontenc}%
+  \RequirePackage{lmodern}%
+}{%
+  \RequirePackage[OT1]{fontenc}%
+  \PackageWarningNoLine{informe-fcefyn}{%
+    No se encontro lmodern. Instalar el paquete 'lm' para mejor tipografia}%
+}
+
+% es-noshorthands evita que babel se apropie de < y > (operadores de C)
+\IfFileExists{spanish.ldf}{%
+  \RequirePackage[spanish,es-noshorthands,es-tabla]{babel}%
+}{%
+  \RequirePackage[english]{babel}%
+  \PackageWarningNoLine{informe-fcefyn}{%
+    No se encontro babel-spanish. Instalar 'babel-spanish' para los titulos
+    en castellano}%
+}
+
+\RequirePackage[a4paper,margin=2.5cm,headheight=15pt]{geometry}
+
+\RequirePackage{graphicx}
+\RequirePackage{xcolor}
+
+% --- Paleta de colores (debe definirse antes de hyperref) ---
+\definecolor{azulunc}{HTML}{003366}   % azul institucional
+\definecolor{grisclaro}{HTML}{F2F2F2}
+\definecolor{grismedio}{HTML}{999999}
+\definecolor{verdecodigo}{HTML}{2E7D32}
+\definecolor{violetacodigo}{HTML}{6A1B9A}
+\definecolor{naranjacodigo}{HTML}{B45309}  % directivas del preprocesador
+\definecolor{rojoaviso}{HTML}{C62828}      % marcas \completar{}
+% Colores de los bloques de los diagramas
+\definecolor{bloquehw}{HTML}{DCE8F5}       % hardware / perifericos
+\definecolor{bloquesw}{HTML}{FFF4D6}       % software / firmware
+\definecolor{bloquemem}{HTML}{E4F2E4}      % memoria / buffers
+
+\RequirePackage{amsmath,amssymb}
+\RequirePackage{booktabs}
+\RequirePackage{multirow}
+\RequirePackage{array}
+\RequirePackage{longtable}
+\RequirePackage{float}
+\RequirePackage{caption}
+\RequirePackage{subcaption}
+\RequirePackage{enumitem}
+\RequirePackage{fancyhdr}
+\RequirePackage{titlesec}
+\RequirePackage{listings}
+\RequirePackage{siunitx}
+\RequirePackage{xfp}                  % \fpeval para la tabla de muestreo
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,shapes.misc,%
+                calc,fit,backgrounds}
