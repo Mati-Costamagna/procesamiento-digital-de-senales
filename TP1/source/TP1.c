@@ -24,9 +24,9 @@
 /* TODO: insert other definitions and declarations here. */
 #define MAX_FREQ CLOCK_GetCTimerClkFreq(0)
 
-#define VEL_0 	9375
+#define VEL_0 	9374
 #define VEL_1 	4687
-#define VEL_2	3409
+#define VEL_2	3408
 #define VEL_3	1704
 #define VEL_4	1562
 
@@ -36,11 +36,11 @@
 
 #define SAMPLES_NUM 512
 
+#define ADC_SHIFT 3U
+#define ADC_MID   2048
+
 volatile int state_counter = 0;
 volatile int flag_adc = 1;
-
-volatile uint32_t last_adc = 0;   /* global */
-volatile uint32_t last_dac = 0;   /* global */
 
 uint32_t sample_vel[5] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
 volatile q15_t samples[SAMPLES_NUM];
@@ -146,11 +146,25 @@ void ADC0_IRQHANDLER(void) {
   lpadc_conv_result_t result;
 
   if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
-  	uint16_t v = (result.convValue >> 4) & 0x0FFF;   /* solo si single-ended 12 bit */
-  	uint16_t out;
-  	if (flag_adc) { samples[sample_count] = (q15_t)result.convValue; sample_count = (sample_count + 1) % SAMPLES_NUM; out = v; }
-  	else          { out = (uint16_t)samples[dac_count]; dac_count = (dac_count + 1) % SAMPLES_NUM; }
-  	DAC_SetData(DAC0, out);
+    uint16_t v = (result.convValue >> ADC_SHIFT) & 0x0FFF;   /* 0..4095 */
+    int32_t  d;
+
+    if (flag_adc) {
+      /* Grabar: 12 bits -> q15 centrado y a escala completa */
+      samples[sample_count] = (q15_t)(((int32_t)v - ADC_MID) * 16);
+      sample_count = (sample_count + 1) % SAMPLES_NUM;
+      dac_count = 0;            /* la reproducción arranca desde el inicio */
+      d = v;                    /* monitoreo: pasa la entrada al DAC */
+    } else {
+      /* Reproducir: q15 -> 12 bits, con saturación */
+      d = ((int32_t)samples[dac_count] / 16) + ADC_MID;
+      if (d < 0)    d = 0;
+      if (d > 4095) d = 4095;
+      dac_count = (dac_count + 1) % SAMPLES_NUM;
+      sample_count = 0;         /* la próxima grabación arranca desde el inicio */
+    }
+
+    DAC_SetData(DAC0, (uint16_t)d);
   }
 
   /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F
