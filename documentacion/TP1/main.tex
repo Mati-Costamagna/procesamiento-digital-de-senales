@@ -26,7 +26,7 @@
 \plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} SDK MCUXpresso}
 \autor{Costamagna, Matías}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
 \autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
-\autor{Rivera, Mariano}{}{luismarianorivera.25@mi.unc.edu.ar}
+\autor{Rivera, Mariano}{45.432.921}{luismarianorivera.25@mi.unc.edu.ar}
 \autor{Rojas, Facundo}{}{}
 % \autor{Apellido, Nombre}{Matrícula}{correo@mi.unc.edu.ar}
 \docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides}
@@ -141,8 +141,8 @@ SDK                     & \texttt{SDK\_26.06.00\_FRDM-MCXN947}\\
 Herramientas de config. & MCUXpresso Config Tools (Clocks, Pins, Peripherals)\\
 Proyecto base           & Ejemplo \texttt{lpadc\_interrupt\_cm33\_core0} del SDK\\
 Bibliotecas             & Drivers del SDK y CMSIS-DSP (tipo \texttt{q15\_t})\\
-Generador de señales    & \completar{marca y modelo}\\
-Osciloscopio            & \completar{marca y modelo}\\
+Generador de señales    & \\
+Osciloscopio            & \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -167,9 +167,6 @@ y el driver del LPADC. Sobre esa base:
   \item La depuración se hace con el MCU-Link integrado de la placa, con la
         configuración guardada en \archivo{TP1 LinkServer Debug.launch}.
 \end{enumerate}
-
-\captura{img/nuevo-proyecto.png}{Importación del proyecto}{Selección de la
-placa, del SDK, del ejemplo base y de los drivers incluidos.}{fig:nuevo-proyecto}
 
 \subsection{Relojes}
 
@@ -202,13 +199,6 @@ DAC0                        & FRO\_HF & 1 & \qty{48}{\mega\hertz}\\
 \end{tabular}
 \end{table}
 
-\codigo{src/cfg_reloj.c}{Configuración del PLL0 y de los selectores de reloj
-(\archivo{board/clock_config.c}).}
-
-\captura{img/clocks.png}{Config Tools \textemdash{} Clocks}{Árbol de relojes:
-PLL0 a \qty{150}{\mega\hertz} para el núcleo y el CTIMER0, FRO\_HF para el
-ADC0 y el DAC0.}{fig:clocks}
-
 \subsection{Pines}
 
 \begin{table}[H]
@@ -238,8 +228,12 @@ es la que dispara al ADC, así que con el osciloscopio en \texttt{J2[13]} se
 mide directamente la frecuencia de muestreo
 (sección~\ref{sec:verificacion}).
 
-\captura{img/pins.png}{Config Tools \textemdash{} Pins}{Ruteo de pines: ADC0\_A0,
-DAC0\_OUT, CT0\_MAT3, LED RGB y teclas.}{fig:pins}
+\captura{img/pins-sw.png}{Config Tools \textemdash{} Pins}{Ruteo de pines: Teclas.}{fig:pins}
+
+\captura{img/pins-per.png}{Config Tools \textemdash{} Pins}{Ruteo de pines: ADC0\_A0,
+DAC0\_OUT y CT0\_MAT.}{fig:pins}
+
+\captura{img/pins-leds.png}{Config Tools \textemdash{} Pins}{Ruteo de pines: LED RGB.}{fig:pins}
 
 \subsection{Periféricos}
 
@@ -318,9 +312,33 @@ polarización que necesita el LPADC.
 
 \codigo{src/cfg_adc.c}{Inicialización del LPADC0
 (\archivo{board/peripherals.c}).}
+\begin{figure}[H]
+    \centering
 
-\captura{img/peripherals-lpadc.png}{Config Tools \textemdash{} LPADC0}{Comando
-de conversión, trigger por hardware e interrupción.}{fig:lpadc}
+    \begin{subfigure}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{img/peripherals-lpadc-1.png}
+        \caption{Comando de conversión}
+        \label{fig:lpadc-1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{img/peripherals-lpadc-2.png}
+        \caption{Trigger por hardware}
+        \label{fig:lpadc-2}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.32\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{img/peripherals-lpadc-3.png}
+        \caption{Interrupción}
+        \label{fig:lpadc-3}
+    \end{subfigure}
+
+    \caption{Configuración del LPADC0 mediante Config Tools.}
+    \label{fig:lpadc}
+\end{figure}
 
 \subsubsection{Conversor D/A (DAC0)}
 
@@ -819,17 +837,6 @@ osciloscopio, sin depender del depurador.
 \completar{Agregar observaciones propias a partir de las mediciones: forma
 escalonada de la salida según $f_s$, efecto de muestrear señales cercanas a
 $f_s/2$, necesidad de un filtro de reconstrucción a la salida del DAC.}
-
-\subsection{Mejoras posibles}
-
-\begin{itemize}[nosep]
-  \item Agregar antirrebote a las teclas: con interrupción por flanco, un
-        rebote puede avanzar más de un estado por pulsación.
-  \item Dar mayor prioridad a la interrupción del ADC que a las de las teclas.
-  \item Indicar el modo STOP en el LED (por ejemplo, con parpadeo).
-  \item Usar $\text{MR} = f_{\text{timer}}/(2 f_s) - 1$ para que las
-        velocidades que dividen exactamente a \ftimer{} no tengan error.
-\end{itemize}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \clearpage
