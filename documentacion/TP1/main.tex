@@ -587,30 +587,33 @@ color del LED en cada estado. Derecha: modo de adquisición con SW2.}
 
 Un número q15 es un entero de 16 bits con signo que representa el valor
 \begin{equation}
-  v = \frac{x_{q15}}{2^{15}} \in \left[-1,\; 1-2^{-15}\right].
+  v_{\mathrm{q15}} = \frac{x_{q15}}{2^{15}} \in \left[-1,\; 1-2^{-15}\right].
 \end{equation}
 En resolución estándar el LPADC entrega el resultado de \qty{12}{\bit}
-alineado a la izquierda dentro de la palabra de 16 bits del registro de la
-FIFO. El firmware guarda esa palabra sin modificar en el buffer como
-\texttt{q15\_t}, de modo que la muestra queda como una fracción de la escala
-completa. Como la entrada es single-ended, el valor es siempre no negativo.
-
-Para el DAC hay que volver a un código de 12 bits justificado a derecha. En
-RUN el firmware lo obtiene del resultado del ADC con un corrimiento y una
-máscara:
+alineado a la izquierda (bits 14:3 de la palabra de la FIFO). El firmware lo
+recupera con un corrimiento de 3 lugares:
 \begin{equation}
-  \text{código}_{\text{DAC}} = \left(x_{\text{ADC}} \gg 4\right)
-  \mathbin{\&} \texttt{0x0FFF}.
+  v = \left(x_{\text{ADC}} \gg 3\right) \mathbin{\&} \texttt{0x0FFF},
+  \qquad v \in [0,\,4095].
 \end{equation}
-\completar{Verificar con el osciloscopio que la amplitud de salida sea igual
-a la de entrada: según el ejemplo del SDK el resultado de 12 bits está
-corrido 3 lugares (no 4); con 4 la salida tendría la mitad de amplitud.}
+Como la entrada es single-ended, $v$ es unipolar. Para que el buffer sea un
+q15 válido para CMSIS-DSP (centrado en cero y a escala completa) se resta la
+mitad de escala y se multiplica por 16:
+\begin{equation}
+  x_{q15} = 16\,(v - 2048) \in [-32768,\; 32752].
+\end{equation}
+Así \qty{0}{\volt} corresponde a $-1{,}0$, \qty{1.65}{\volt} a $0$ y
+\qty{3.3}{\volt} a casi $+1$ (constantes \texttt{ADC\_SHIFT} y
+\texttt{ADC\_MID} en \archivo{source/TP1.c}).
 
-En STOP el valor que se envía al DAC es la muestra guardada
-\texttt{samples[dac\_count]}.
-\completar{La muestra guardada es la palabra de 16 bits del ADC: aplicarle el
-mismo corrimiento antes de \texttt{DAC\_SetData()} para que la reproducción
-tenga la escala correcta.}
+En RUN el DAC recibe $v$ directamente (monitoreo de la entrada). En STOP se
+invierte la conversión con saturación:
+\begin{equation}
+  \text{código}_{\text{DAC}} =
+  \mathrm{sat}_{[0,\,4095]}\!\left(\frac{x_{q15}}{16} + 2048\right).
+\end{equation}
+La conversión de ida y vuelta no pierde información (12 bits dentro de 16);
+la saturación sólo actúa si el buffer se procesa antes de reproducirlo.
 
 \subsection{Rutinas de interrupción}
 
@@ -627,10 +630,12 @@ las teclas, una vez por pulsación.
   \node[decision, below=of a1] (a2) {¿Hay resultado\\en la FIFO0?};
   \node[decision, below=0.7cm of a2] (a3) {¿\texttt{flag\_adc}?\\(RUN)};
   \node[proceso, below=0.7cm of a3, xshift=-2.4cm] (a4)
-       {\texttt{samples[i]} $\leftarrow$ resultado\\$i \leftarrow (i+1) \bmod 512$\\
-        out $\leftarrow$ (res $\gg$ 4) \& 0xFFF};
-  \node[proceso, below=0.7cm of a3, xshift=2.4cm] (a5)
-       {out $\leftarrow$ \texttt{samples[j]}\\$j \leftarrow (j+1) \bmod 512$};
+     {$v \leftarrow (\mathrm{res} \gg 3)$ \& 0xFFF\\
+      \texttt{samples[i]} $\leftarrow 16\,(v-2048)$\\
+      $i \leftarrow (i+1) \bmod 512$;\ $j \leftarrow 0$;\ out $\leftarrow v$};
+\node[proceso, below=0.7cm of a3, xshift=2.4cm] (a5)
+     {out $\leftarrow \mathrm{sat}(\texttt{samples[j]}/16+2048)$\\
+      $j \leftarrow (j+1) \bmod 512$;\ $i \leftarrow 0$};
   \node[proceso, below=2.6cm of a3] (a6) {\texttt{DAC\_SetData(out)}};
   \node[inicio,  below=of a6] (a7) {Retorno};
   \draw[flecha] (a0) -- (a1);
