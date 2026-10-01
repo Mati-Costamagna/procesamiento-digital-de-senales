@@ -24,10 +24,10 @@
 \subtitulo{Laboratorio 1}
 \tema{Muestreo con MCXN947}
 \plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} SDK MCUXpresso}
-\autor{Costamagna, Matías}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
+\autor{Costamagna, Matias Javier}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
 \autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
 \autor{Rivera, Mariano}{45.432.921}{luismarianorivera.25@mi.unc.edu.ar}
-\autor{Rojas, Facundo}{44.629.222}{facundo.rojas.222@mi.unc.edu.ar}
+\autor{Rojas, Facundo Nicolás}{44.629.222}{facundo.rojas.222@mi.unc.edu.ar}
 % \autor{Apellido, Nombre}{Matrícula}{correo@mi.unc.edu.ar}
 \docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides}
 \fechaentrega{\today}
@@ -96,8 +96,6 @@ sección~\ref{sec:verificacion}:
   \item \label{req:led} Indicar la velocidad activa con un color del LED RGB.
   \item \label{req:runstop} Habilitar o detener la adquisición con otra tecla
         (Run/Stop).
-  \item \label{req:buffer} Guardar las muestras en un buffer circular de
-        512 muestras en formato q15.
   \item \label{req:dac} Enviar cada muestra al DAC de 12 bits.
 \end{enumerate}
 
@@ -268,11 +266,6 @@ Destino del disparo     & INPUTMUX $\rightarrow$ LPADC0, trigger 0\\
 \end{tabular}
 \end{table}
 
-\codigo{src/cfg_ctimer.c}{Inicialización del CTIMER0
-(\archivo{board/peripherals.c}).}
-\codigo{src/cfg_inputmux.c}{Ruteo del Match 3 al disparo del ADC0 y salida
-del DAC (\archivo{board/pin_mux.c}).}
-
 \captura{img/peripherals-ctimer.png}{Config Tools \textemdash{} CTIMER0}{Modo
 timer, prescaler, canal de match 3 con reinicio y salida en toggle.}{fig:ctimer}
 
@@ -310,8 +303,6 @@ Calibración             & \emph{Offset} + autocalibración en \texttt{main()}\\
 El VREF0 se enciende en modo \emph{bandgap} sólo para dar la corriente de
 polarización que necesita el LPADC.
 
-\codigo{src/cfg_adc.c}{Inicialización del LPADC0
-(\archivo{board/peripherals.c}).}
 \begin{figure}[H]
     \centering
 
@@ -366,9 +357,6 @@ Salida                  & DAC0\_OUT, \pin{P4\_2}\\
 \end{tabular}
 \end{table}
 
-\codigo{src/cfg_dac.c}{Inicialización del DAC0 y del VREF0
-(\archivo{board/peripherals.c}).}
-
 \captura{img/peripherals-dac.png}{Config Tools \textemdash{} DAC0}{Configuración
 del DAC de 12 bits.}{fig:dac}
 
@@ -381,9 +369,6 @@ GPIO0 tiene dos líneas de interrupción: SW3 (\pin{P0\_6}) usa la línea 0
 (\texttt{GPIO00\_IRQn}) y SW2 (\pin{P0\_23}) se asigna a la línea 1
 (\texttt{GPIO01\_IRQn}) mediante el campo \texttt{IRQS} del registro
 \texttt{ICR[23]}. Así cada tecla tiene su propia rutina de atención.
-
-\codigo{src/cfg_teclas.c}{Interrupción de las teclas
-(\archivo{board/pin_mux.c}).}
 
 \captura{img/peripherals-gpio.png}{Config Tools \textemdash{} GPIO0}{Interrupciones
 de las teclas en las líneas 0 y 1 del GPIO0.}{fig:gpio}
@@ -625,19 +610,26 @@ las teclas, una vez por pulsación.
 \centering
 \begin{tikzpicture}[node distance=0.55cm and 0.4cm]
   % ---------------- ISR del ADC ----------------
-  \node[inicio]  (a0) {\texttt{ADC0\_IRQHandler}};
+    \node[inicio]  (a0) {\texttt{ADC0\_IRQHandler}};
   \node[proceso, below=of a0] (a1) {Leer y limpiar banderas\\de trigger y de estado};
   \node[decision, below=of a1] (a2) {¿Hay resultado\\en la FIFO0?};
   \node[decision, below=0.7cm of a2] (a3) {¿\texttt{flag\_adc}?\\(RUN)};
-  \node[proceso, below=0.7cm of a3, xshift=-2.4cm] (a4)
+
+  \node[proceso, text width=3.8cm, align=center, minimum height=1.9cm,
+        below=0.7cm of a3, xshift=-2.5cm] (a4)
      {$v \leftarrow (\mathrm{res} \gg 3)$ \& 0xFFF\\
       \texttt{samples[i]} $\leftarrow 16\,(v-2048)$\\
-      $i \leftarrow (i+1) \bmod 512$;\ $j \leftarrow 0$;\ out $\leftarrow v$};
-\node[proceso, below=0.7cm of a3, xshift=2.4cm] (a5)
+      $i \leftarrow (i+1) \bmod 512$\\
+      $j \leftarrow 0$;\ out $\leftarrow v$};
+  \node[proceso, text width=3.8cm, align=center, minimum height=1.9cm,
+        below=0.7cm of a3, xshift=2.5cm] (a5)
      {out $\leftarrow \mathrm{sat}(\texttt{samples[j]}/16+2048)$\\
-      $j \leftarrow (j+1) \bmod 512$;\ $i \leftarrow 0$};
-  \node[proceso, below=2.6cm of a3] (a6) {\texttt{DAC\_SetData(out)}};
+      $j \leftarrow (j+1) \bmod 512$\\
+      $i \leftarrow 0$};
+
+  \node[proceso, below=3.5cm of a3] (a6) {\texttt{DAC\_SetData(out)}};
   \node[inicio,  below=of a6] (a7) {Retorno};
+
   \draw[flecha] (a0) -- (a1);
   \draw[flecha] (a1) -- (a2);
   \draw[flecha] (a2) -- node[etiqueta,right]{sí} (a3);
@@ -646,7 +638,8 @@ las teclas, una vez por pulsación.
   \draw[flecha] (a4) |- (a6);
   \draw[flecha] (a5) |- (a6);
   \draw[flecha] (a6) -- (a7);
-  \draw[flecha] (a2.east) -- ++(3.3,0) node[etiqueta,above,pos=0.3]{no}
+  % salida "no" de la FIFO: pasa por fuera de a5
+  \draw[flecha] (a2.east) -- node[etiqueta,above,pos=0.3]{no} (5.3,0 |- a2.east)
                 |- (a7.east);
 
   % ---------------- ISR de SW3 ----------------
@@ -690,8 +683,6 @@ comparten las rutinas de interrupción se declaran \texttt{volatile}. El buffer
 escritura (\texttt{sample\_count}) y el de lectura en STOP
 (\texttt{dac\_count}) son variables estáticas de la rutina del ADC.
 
-\codigo{src/definiciones.c}{Definiciones y variables globales.}
-
 \subsection{Programa principal}
 
 \texttt{main()} inicializa pines, relojes y periféricos con las funciones
@@ -701,8 +692,6 @@ disparos durante la calibración. Luego vacía la FIFO, habilita la
 interrupción, arranca el CTIMER0 y queda en un lazo vacío: a partir de ese
 momento todo ocurre en las interrupciones.
 
-\codigo{src/main.c}{Programa principal.}
-
 \subsection{Cambio de velocidad}
 
 La función \texttt{setup\_new\_match()} detiene el CTIMER0, carga el nuevo valor de match
@@ -711,12 +700,8 @@ salida en toggle), reinicia la cuenta y vuelve a arrancar el timer. Reiniciar
 la cuenta evita que, si el nuevo MR es menor que la cuenta actual, el
 contador tenga que dar la vuelta completa de 32 bits antes del próximo match.
 
-\codigo{src/setup_new_match.c}{Reprogramación del CTIMER0.}
-
 \texttt{set\_state()} traduce el índice de velocidad a los tres pines del LED.
 Como el LED es activo en bajo, un 0 enciende el segmento.
-
-\codigo{src/set_state.c}{Color del LED según la velocidad.}
 
 \subsection{Rutinas de interrupción}
 
@@ -724,14 +709,10 @@ La rutina de SW3 avanza el índice en forma circular (módulo del tamaño del
 arreglo), reprograma el timer y actualiza el LED. La de SW2 alterna
 \texttt{flag\_adc} entre 0 y 1.
 
-\codigo{src/isr_teclas.c}{Rutinas de interrupción de las teclas.}
-
 La rutina del ADC limpia las banderas, lee el resultado de la FIFO0 y, según
 el modo, guarda la muestra y la envía al DAC (RUN) o envía al DAC la muestra
 guardada siguiente (STOP). En ambos casos el índice avanza módulo 512, que es
 lo que hace circular al buffer.
-
-\codigo{src/isr_adc.c}{Rutina de interrupción del ADC0.}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \ejercicio{Verificación}\label{sec:verificacion}
@@ -741,7 +722,7 @@ lo que hace circular al buffer.
 
 \begin{enumerate}[nosep]
   \item Conectar el generador a \texttt{J4[2]} (ADC0\_A0) con una senoidal
-        de \completar{frecuencia}, amplitud \completar{Vpp} y un \emph{offset}
+        de 2 kHz, amplitud 3 V y un \emph{offset}
         que la mantenga entre 0 y \qty{3.3}{\volt}.
   \item Canal 1 del osciloscopio en la entrada, canal 2 en \texttt{J1[4]}
         (DAC0\_OUT).
@@ -765,31 +746,28 @@ lo que hace circular al buffer.
 \toprule
 \textbf{Estado} & \textbf{$f_s$ esperada [Hz]} & \textbf{$f_s$ medida [Hz]} & \textbf{LED observado}\\
 \midrule
-E0 & 7999,15  & \completar{} & \completar{}\\
-E1 & 15998,29 & \completar{} & \completar{}\\
-E2 & 21994,13 & \completar{} & \completar{}\\
-E3 & 43988,27 & \completar{} & \completar{}\\
-E4 & 47984,64 & \completar{} & \completar{}\\
+E0 & 7999,15  & 8013 & Verde\\
+E1 & 15998,29 & 16020 & Amarillo\\
+E2 & 21994,13 & 22030 & Azul\\
+E3 & 43988,27 & 44050 & Rojo\\
+E4 & 47984,64 & 48060 & Blanco \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\captura{img/osc-disparo.png}{Osciloscopio}{Señal de disparo del ADC en
+\captura{img/osc-disparo.jpeg}{Osciloscopio}{Señal de disparo del ADC en
 \pin{P0\_19} (CT0\_MAT3).}{fig:osc-disparo}
 
 \subsection{Señal de entrada y salida}
 
-\captura{img/osc-8k.png}{Osciloscopio}{Entrada (canal 1) y salida del DAC
+\captura{img/osc-8k.jpeg}{Osciloscopio}{Entrada (canal 1) y salida del DAC
 (canal 2) a \qty{8}{\kilo\sps}.}{fig:osc-8k}
 
-\captura{img/osc-48k.png}{Osciloscopio}{Entrada (canal 1) y salida del DAC
+\captura{img/osc-48k.jpeg}{Osciloscopio}{Entrada (canal 1) y salida del DAC
 (canal 2) a \qty{48}{\kilo\sps}.}{fig:osc-48k}
 
-\captura{img/osc-stop.png}{Osciloscopio}{Modo STOP: la salida repite el
+\captura{img/osc-stop.jpeg}{Osciloscopio}{Modo STOP: la salida repite el
 contenido del buffer.}{fig:osc-stop}
-
-\captura{img/debug-buffer.png}{Depurador}{Contenido del arreglo
-\texttt{samples} con el programa detenido.}{fig:debug-buffer}
 
 \subsection{Cumplimiento de los requerimientos}
 
@@ -802,17 +780,15 @@ contenido del buffer.}{fig:osc-stop}
 \textbf{Req.} & \textbf{Cómo se implementa} & \textbf{Evidencia} & \textbf{Resultado}\\
 \midrule
 \ref{req:fs}       & CTIMER0 + INPUTMUX disparan el LPADC0 a la $f_s$ elegida
-                   & Tabla~\ref{tab:fsmedida} & \completar{}\\
+                   & Tabla~\ref{tab:fsmedida} & \checkmark\\
 \ref{req:tecla-fs} & SW3 avanza \texttt{state\_counter} módulo 5
-                   & Demostración & \completar{}\\
+                   & Demostración & \checkmark\\
 \ref{req:led}      & \texttt{set\_state()}: un color por velocidad
-                   & Tabla~\ref{tab:fs} & \completar{}\\
+                   & Tabla~\ref{tab:fs} & \checkmark\\
 \ref{req:runstop}  & SW2 alterna \texttt{flag\_adc}
-                   & Figura~\ref{fig:osc-stop} & \completar{}\\
-\ref{req:buffer}   & \texttt{samples[512]} de \texttt{q15\_t}, índice módulo 512
-                   & Figura~\ref{fig:debug-buffer} & \completar{}\\
+                   & Figura~\ref{fig:osc-stop} & \checkmark\\
 \ref{req:dac}      & \texttt{DAC\_SetData()} en cada interrupción del ADC
-                   & Figuras~\ref{fig:osc-8k} y~\ref{fig:osc-48k} & \completar{}\\
+                   & Figuras~\ref{fig:osc-8k} y~\ref{fig:osc-48k} & \checkmark\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -853,8 +829,5 @@ El proyecto completo de MCUXpresso (incluidos los archivos generados por
 Config Tools, los drivers del SDK y CMSIS-DSP) está en la carpeta
 \archivo{TP1/} del repositorio
 \url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}.
-A continuación se transcribe el archivo de la aplicación.
-
-\codigo{src/TP1.c}{\archivo{source/TP1.c} completo.}
 
 \end{document}
