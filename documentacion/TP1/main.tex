@@ -766,8 +766,8 @@ E4 & 47984,64 & 48060 & Blanco \\
 \captura{img/osc-48k.jpeg}{Osciloscopio}{Entrada (canal 1) y salida del DAC
 (canal 2) a \qty{48}{\kilo\sps}.}{fig:osc-48k}
 
-\captura{img/osc-stop.jpeg}{Osciloscopio}{Modo STOP: la salida repite el
-contenido del buffer.}{fig:osc-stop}
+\captura{img/osc-stop.jpeg}{Osciloscopio}{Entrada (canal 1) y salida del DAC
+(canal 2) con la adquisición detenida mediante SW2.}{fig:osc-stop}
 
 \subsection{Cumplimiento de los requerimientos}
 
@@ -793,31 +793,66 @@ contenido del buffer.}{fig:osc-stop}
 \end{tabular}
 \end{table}
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \ejercicio{Conclusiones}
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 Se implementó sobre la FRDM-MCXN947 una aplicación que digitaliza una señal
-con el LPADC0 a cinco velocidades seleccionables, guarda las muestras en un
-buffer circular de 512 valores \texttt{q15\_t} y las reproduce por el DAC0 de
-12 bits.
+con el LPADC0 a cinco velocidades seleccionables (\qtylist{8;16;22;44;48}{\kilo\sps}),
+guarda las muestras en un buffer circular de 512 valores \texttt{q15\_t} y las
+envía al DAC0 de \qty{12}{\bit}. Con SW3 se recorren las velocidades en forma
+circular, cada una indicada por un color del LED RGB, y con SW2 se alterna entre
+adquisición y detención (Run/Stop). Los cinco requerimientos
+\ref{req:fs}--\ref{req:dac} se cumplieron, como resume la
+tabla~\ref{tab:cumplimiento}.
 
 La decisión principal del diseño fue disparar el ADC por hardware: la salida
-del match del CTIMER0 llega al LPADC por el INPUTMUX, sin pasar por el CPU.
-Así el período de muestreo depende sólo del reloj del timer y no de la
-latencia de las interrupciones, y el procesador interviene únicamente para
-mover cada resultado al buffer y al DAC. Con el timer a \ftimer{} todas las
-velocidades se obtienen con un error menor a \qty{0.04}{\percent}, y a
-\qty{48}{\kilo\sps} quedan unos 3100 ciclos del núcleo por muestra, de los
-cuales la rutina del ADC usa una fracción pequeña.
+del match 3 del CTIMER0 llega al LPADC0 a través del INPUTMUX, sin intervención
+del CPU. Así el período de muestreo depende sólo del reloj del timer y no de la
+latencia de las interrupciones. El procesador interviene únicamente para mover
+cada resultado al buffer y al DAC, y a \qty{48}{\kilo\sps} quedan unos 3100
+ciclos del núcleo por muestra.
 
-Tener la señal de disparo en un pin (\pin{P0\_19}) resultó útil para
-verificar: la frecuencia de muestreo se mide directamente con el
-osciloscopio, sin depender del depurador.
+Las mediciones validan este diseño. La señal de disparo observada en
+\pin{P0\_19} (figura~\ref{fig:osc-disparo}) es una onda cuadrada de ciclo de
+trabajo cercano a \qty{50}{\percent} (\qty{50.06}{\percent} en la captura), con
+una frecuencia de \qty{16.02}{\kilo\hertz} en el estado E1. Esto confirma el
+modo \emph{toggle} del match y la relación $f_s = f_{\text{timer}}/(2(\text{MR}+1))$
+de la ecuación~\eqref{eq:fs}. En los cinco estados la frecuencia medida
+(tabla~\ref{tab:fsmedida}) supera a la esperada en alrededor de
+\qty{0.15}{\percent}, una desviación sistemática y menor a \qty{0.2}{\percent}.
+Es despreciable para esta aplicación.
 
-\completar{Agregar observaciones propias a partir de las mediciones: forma
-escalonada de la salida según $f_s$, efecto de muestrear señales cercanas a
-$f_s/2$, necesidad de un filtro de reconstrucción a la salida del DAC.}
+En las capturas de entrada y salida
+(figuras~\ref{fig:osc-8k}, \ref{fig:osc-48k} y~\ref{fig:osc-stop}) la señal
+reconstruida en \pin{P4\_2} conserva la frecuencia de la senoidal de entrada,
+de aproximadamente \qty{2}{\kilo\hertz}, y tiene forma de escalera, propia de
+un retenedor de orden cero. El ancho de cada escalón disminuye al aumentar
+$f_s$: a \qty{8}{\kilo\sps} hay sólo cuatro muestras por período y la salida es
+muy escalonada, mientras que a \qty{48}{\kilo\sps} sigue con mucha mayor
+fidelidad a la entrada. Además, la salida presenta un retardo respecto de la
+entrada, atribuible al retenedor de orden cero y a la latencia de la cadena de
+conversión.
+
+Durante el desarrollo se resolvieron varios problemas técnicos. Primero, el
+resultado de \qty{12}{\bit} del LPADC viene alineado a la izquierda en la
+palabra de la FIFO, por lo que se aplicó un corrimiento de 3 lugares y se
+escaló a q15 centrado en cero para que el buffer sea compatible con CMSIS-DSP,
+con conversión inversa y saturación para el DAC. Segundo, el CTIMER0 se reinicia
+al reprogramar el match, para que un MR menor que la cuenta actual no obligue
+al contador a dar una vuelta completa de 32 bits antes del próximo disparo.
+Tercero, la calibración del ADC se hace con la interrupción deshabilitada y el
+timer detenido. Cuarto, cada tecla se asignó a una línea de interrupción propia
+del GPIO0 mediante el campo \texttt{IRQS}, lo que evita compartir rutina de
+atención. Por último, se evaluó la ambigüedad de las velocidades de \qty{22}{\kilo\sps}
+y \qty{44}{\kilo\sps}, que se adoptaron literalmente (con su alternativa documentada en
+la sección~\ref{sec:diseno}).
+
+En conjunto, la solución es robusta porque desacopla el instante de muestreo
+del software: ninguna latencia de interrupción altera el período de muestreo,
+y la espera entre rutinas de igual prioridad queda muy por debajo del período
+mínimo de \qty{20.8}{\micro\second}. La principal limitación observada es la
+forma escalonada de la salida del DAC, que en una aplicación real requeriría un
+filtro de reconstrucción y, para señales cercanas a $f_s/2$, un filtro
+antialiasing previo al ADC.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \clearpage
