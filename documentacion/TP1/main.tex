@@ -484,8 +484,8 @@ matches, es decir $2(\text{MR}+1)$ ciclos del timer:
   \label{eq:fs}
 \end{equation}
 En el firmware los valores de MR están en el arreglo \texttt{sample\_vel}
-(constantes \texttt{VEL\_0} a \texttt{VEL\_4}) y se calcularon como
-$\text{MR} = \lfloor f_{\text{timer}}/(2 f_s) \rfloor$. La
+(constantes \texttt{VEL\_0} a \texttt{VEL\_4}) y se eligió para cada caso el
+entero más cercano a $f_{\text{timer}}/(2 f_s)-1$. La
 tabla~\ref{tab:fs} aplica la ecuación~\eqref{eq:fs} con
 $f_{\text{timer}} = $ \ftimer{} a esos valores. El índice de estado coincide
 con la posición en el arreglo.
@@ -495,26 +495,24 @@ con la posición en el arreglo.
 \caption{Velocidades de muestreo, valor de match programado y color del LED.}
 \label{tab:fs}
 \begin{tablamuestreo}
-  \filafs{8000} {9375}{Verde}   {0}{1}{0}
+  \filafs{8000} {9374}{Verde}   {0}{1}{0}
   \filafs{16000}{4687}{Amarillo}{1}{1}{0}
-  \filafs{22000}{3409}{Azul}    {0}{0}{1}
+  \filafs{22000}{3408}{Azul}    {0}{0}{1}
   \filafs{44000}{1704}{Rojo}    {1}{0}{0}
   \filafs{48000}{1562}{Blanco}  {1}{1}{1}
 \end{tablamuestreo}
 \end{table}
 
-El error se debe a que la ecuación~\eqref{eq:fs} tiene $\text{MR}+1$ en el
-denominador: con $\text{MR} = f_{\text{timer}}/(2 f_s) - 1$ (por ejemplo 9374
-para \qty{8}{\kilo\sps}, que es el valor que genera Config Tools para el
-arranque) las velocidades de 8, 16 y \qty{48}{\kilo\sps} serían exactas. En
-cualquier caso el error es menor a \qty{0.04}{\percent}, despreciable para esta
-aplicación.
+La presencia de $\text{MR}+1$ en el denominador hace que los valores enteros
+de MR produzcan pequeños errores respecto de la velocidad nominal. Con los
+valores implementados, el error de cuantización es menor a \qty{0.04}{\percent}
+en todas las velocidades, por lo que resulta despreciable para esta aplicación.
 
 \begin{nota}[Interpretación de 22K/S y 44K/S]
 Se tomaron literalmente como \qty{22}{\kilo\sps} y \qty{44}{\kilo\sps}. Si la
 cátedra se refiere a las frecuencias estándar de audio
 (\qty{22.05}{\kilo\hertz} y \qty{44.1}{\kilo\hertz}), basta cambiar
-\texttt{VEL\_2} y \texttt{VEL\_3} en \archivo{source/TP1.c} por 3401 y 1700, y
+\texttt{VEL\_2} y \texttt{VEL\_3} en \archivo{source/TP1.c} por 3400 y 1700, y
 actualizar la tabla en \archivo{main.tex}.
 \end{nota}
 
@@ -746,9 +744,9 @@ lo que hace circular al buffer.
 \toprule
 \textbf{Estado} & \textbf{$f_s$ esperada [Hz]} & \textbf{$f_s$ medida [Hz]} & \textbf{LED observado}\\
 \midrule
-E0 & 7999,15  & 8013 & Verde\\
+E0 & 8000,00  & 8013 & Verde\\
 E1 & 15998,29 & 16020 & Amarillo\\
-E2 & 21994,13 & 22030 & Azul\\
+E2 & 22000,59 & 22030 & Azul\\
 E3 & 43988,27 & 44050 & Rojo\\
 E4 & 47984,64 & 48060 & Blanco \\
 \bottomrule
@@ -802,7 +800,8 @@ envía al DAC0 de \qty{12}{\bit}. Con SW3 se recorren las velocidades en forma
 circular, cada una indicada por un color del LED RGB, y con SW2 se alterna entre
 adquisición y detención (Run/Stop). Los cinco requerimientos
 \ref{req:fs}--\ref{req:dac} se cumplieron, como resume la
-tabla~\ref{tab:cumplimiento}.
+tabla~\ref{tab:cumplimiento}; la reproducción en STOP supone haber adquirido
+previamente al menos 512 muestras para que todo el buffer contenga datos válidos.
 
 La decisión principal del diseño fue disparar el ADC por hardware: la salida
 del match 3 del CTIMER0 llega al LPADC0 a través del INPUTMUX, sin intervención
@@ -818,8 +817,8 @@ una frecuencia de \qty{16.02}{\kilo\hertz} en el estado E1. Esto confirma el
 modo \emph{toggle} del match y la relación $f_s = f_{\text{timer}}/(2(\text{MR}+1))$
 de la ecuación~\eqref{eq:fs}. En los cinco estados la frecuencia medida
 (tabla~\ref{tab:fsmedida}) supera a la esperada en alrededor de
-\qty{0.15}{\percent}, una desviación sistemática y menor a \qty{0.2}{\percent}.
-Es despreciable para esta aplicación.
+\qtyrange{0.13}{0.17}{\percent}, una desviación sistemática y menor a
+\qty{0.2}{\percent}. Es despreciable para esta aplicación.
 
 En las capturas de entrada y salida
 (figuras~\ref{fig:osc-8k}, \ref{fig:osc-48k} y~\ref{fig:osc-stop}) la señal
