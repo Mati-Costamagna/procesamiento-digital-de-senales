@@ -9,10 +9,12 @@
  * @file    TP2.c
  * @brief   TP2 - Filtros FIR por muestras (CMSIS-DSP, Q15) en FRDM-MCXN947.
  *
- * Boton GPIO0 INT0: cambia la frecuencia de muestreo (8k, 16k, 22k, 44k, 48k).
- *                   El color del LED indica la fs (igual que en el Lab #1).
- * Boton GPIO0 INT1: recorre BYPASS -> PB -> PA -> PBanda -> EB -> BYPASS ...
- *                   (habilita el filtro o hace bypass al buffer de salida).
+ * SW3 (P0_6,  GPIO0 INT0): cambia la frecuencia de muestreo (8k, 16k, 22k,
+ *                          44k, 48k). El color del LED indica la fs.
+ * SW2 (P0_23, GPIO0 INT1): recorre BYPASS -> PB -> PA -> PBanda -> EB -> ...
+ *                          (habilita el filtro o hace bypass al buffer de salida).
+ * P0_26 (J2[10]): pin de medicion. Esta en 1 mientras se ejecuta la rutina
+ *                 del ADC; con el osciloscopio se mide la duracion del pulso.
  */
 #include <filtros.h>      /* generado con generar_filtros.m */
 #include <stdio.h>
@@ -38,8 +40,12 @@
 #define LED_RED_PIN   10U    /* P0_10 -> GPIO0 */
 #define LED_GREEN_PIN 27U    /* P0_27 -> GPIO0 */
 #define LED_BLUE_PIN  2U     /* P1_2  -> GPIO1 */
-#define SW2_PIN       23U    /* P0_23: cambia la fs        -> GPIO0 INT0 */
-#define SW3_PIN       6U     /* P0_6 : bypass / tipo filtro -> GPIO0 INT1 */
+#define SW2_PIN       23U    /* P0_23: bypass / tipo filtro -> GPIO0 INT1 */
+#define SW3_PIN       6U     /* P0_6 : cambia la fs         -> GPIO0 INT0 */
+
+/* Pin de medicion del tiempo de la ISR del ADC (libre en la placa) */
+#define MEDIR_TIEMPO_ISR 1     /* 0 = desactivado */
+#define PIN_MEDICION     26U   /* P0_26 -> J2[10] */
 
 /* Si las Config Tools no generaron los nombres de los handlers, se usan
  * directamente los del vector de interrupciones. */
@@ -129,6 +135,17 @@ static void aplicar_seleccion(void) {
 	}
 }
 
+/* Configura P0_26 como salida GPIO para medir la duracion de la ISR. */
+static void init_pin_medicion(void) {
+#if MEDIR_TIEMPO_ISR
+	gpio_pin_config_t cfg = { kGPIO_DigitalOutput, 0U };
+	CLOCK_EnableClock(kCLOCK_Port0);
+	CLOCK_EnableClock(kCLOCK_Gpio0);
+	PORT_SetPinMux(PORT0, PIN_MEDICION, kPORT_MuxAlt0);
+	GPIO_PinInit(GPIO0, PIN_MEDICION, &cfg);
+#endif
+}
+
 void setup_new_match(int m_val){
 	uint32_t match_val = m_val;
 	CTIMER_StopTimer(CTIMER0_PERIPHERAL);
@@ -205,6 +222,9 @@ void GPIO0_INT_1_IRQHANDLER(void) {
 
 /* ADC0_IRQn interrupt handler: una muestra por interrupcion */
 void ADC0_IRQHANDLER(void) {
+#if MEDIR_TIEMPO_ISR
+  GPIO_PortSet(GPIO0, 1UL << PIN_MEDICION);      /* inicio de la ISR */
+#endif
   uint32_t trigger_status_flag;
   uint32_t status_flag;
   trigger_status_flag = LPADC_GetTriggerStatusFlags(ADC0_PERIPHERAL);
@@ -238,6 +258,10 @@ void ADC0_IRQHANDLER(void) {
     index_buffer = (index_buffer + 1) % BUFFER_SIZE;
   }
 
+#if MEDIR_TIEMPO_ISR
+  GPIO_PortClear(GPIO0, 1UL << PIN_MEDICION);    /* fin de la ISR */
+#endif
+
   #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
   #endif
@@ -252,6 +276,7 @@ int main(void) {
     BOARD_InitBootPins();
     BOARD_InitBootClocks();
     init_dac();                     /* antes de que arranque el ADC */
+    init_pin_medicion();
     BOARD_InitBootPeripherals();
 #ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
     /* Init FSL debug console. */
