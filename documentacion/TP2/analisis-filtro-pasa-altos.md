@@ -299,7 +299,8 @@ y   = x_retrasado_L_menos_1 - (s2 / (L*L)); /* pasa altos = retardo − pasa baj
 
 ## 13. Veredicto
 
-1. **Diseño en la herramienta (lo que pide la consigna): opción 1.** `filterDesigner` → Highpass → FIR **Equiripple** → **Minimum order** → Units Hz, **Fs** = cada una, **Fstop = 5**, **Fpass = 35** → Units dB, **Astop = 31**, **Apass = 1**. Repetir para las 5 fs. Es el método de menor orden en todos los casos medidos: entre 20 % y 57 % menos taps que Kaiser con iguales especificaciones, y −68 % frente al diseño actual. Cumple la especificación con Q15 y tiene el menor retardo.
+1. **Diseño en la herramienta (lo que pide la consigna):** 
+- **Opción 1.** `filterDesigner` → Highpass → FIR **Equiripple** → **Minimum order** → Units Hz, **Fs** = cada una, **Fstop = 5**, **Fpass = 35** → Units dB, **Astop = 31**, **Apass = 1**. Repetir para las 5 fs. Es el método de menor orden en todos los casos medidos: entre 20 % y 57 % menos taps que Kaiser con iguales especificaciones, y −68 % frente al diseño actual. Cumple la especificación con Q15 y tiene el menor retardo.
 2. **Implementación:** con `arm_fir_q15` por muestras alcanza (estimado) a **8 y 16 kHz**; a 22 kHz queda al límite. Para 44/48 kHz ningún FIR de la herramienta que respete Fpass = 35 Hz entra en este micro con `arm_fir_q15`. Ahí hay dos salidas: la opción 9 (si la cátedra la acepta) o documentar la limitación con la medición de ciclos, que es una conclusión válida del TP y lleva naturalmente a los IIR.
 3. **Medir antes de decidir:** los porcentajes de CPU son estimaciones. Con el contador DWT (§11) se confirma en minutos, en la placa, qué combinaciones entran.
 
@@ -311,3 +312,45 @@ y   = x_retrasado_L_menos_1 - (s2 / (L*L)); /* pasa altos = retardo − pasa baj
 4. **Set quantization parameters** → Fixed-point, numerador 16 bits / 15 fraccionarios → verificar que la respuesta cuantizada siga por debajo de −30 dB entre 0 y 5 Hz.
 5. Exportar (*File → Export* al workspace como `Num`, o *Targets → Generate C Header* como entero de 16 bits) y regenerar `filtros.h` con el script, que invierte, rellena con un cero si hace falta y arma las tablas.
 6. Repetir con Fs = 16000, 22000, 44000 y 48000.
+
+
+
+
+Me refiero al **tiempo de cálculo en el micro**, no al diseño. `filterDesigner` diseña sin problema un pasa altos de 35 Hz para las 5 fs y la respuesta cumple la especificación. El problema es **ejecutarlo a tiempo** en la placa.
+
+## Qué significa "no entra"
+
+Cada vez que el ADC entrega una muestra, la ISR tiene que calcular la salida del FIR **antes de que llegue la muestra siguiente**. El tiempo que tiene es 1/fs:
+
+| fs | Tiempo entre muestras | Ciclos disponibles (150 MHz) |
+|---|---|---|
+| 8 kHz | 125 µs | 18 750 |
+| 48 kHz | 20,8 µs | 3 125 |
+
+`arm_fir_q15` con `BLOCK_SIZE 1` cuesta, según mi estimación, unos **9 ciclos por coeficiente**: una multiplicación-acumulación más la copia del estado. Con eso, usando el 80 % de la CPU, a 48 kHz entran como mucho **≈ 255 coeficientes**.
+
+## Por qué ningún diseño de 35 Hz llega a eso
+
+El orden mínimo de un FIR crece como **fs / Δf**, donde Δf = Fpass − Fstop es el ancho de la transición. Con Fpass = 35 Hz, la transición nunca puede ser más ancha que 35 Hz, porque Fstop no puede bajar de 0.
+
+- Con el mejor caso que encontré (Equiripple, Fstop = 5 Hz), a 48 kHz hacen falta **≈ 1560 coeficientes**.
+- Aun con la transición más ancha posible (0 a 35 Hz), la cuenta da del orden de 48000/35 ≈ **1400 coeficientes**.
+- Eso es 5 o 6 veces más que los ≈ 255 que entran. La carga queda en **≈ 450 %**: la ISR tardaría unas 4 o 5 veces más que el tiempo entre muestras.
+
+Por eso digo que **ningún** FIR que cumpla Fc = 35 Hz entra: no es una mala elección de método. Equiripple ya es el de menor orden posible, y el problema está en la física del filtro: una frecuencia de corte muy baja comparada con fs exige muchos coeficientes.
+
+## Qué pasa si igual lo cargás
+
+Si la ISR tarda más que el período de muestreo:
+
+- se pierden conversiones del ADC y la fs real queda más baja que la que elegiste;
+- la salida en el DAC sale distorsionada o cortada;
+- el `main` y las interrupciones de los botones pueden quedar sin atención, así que la placa parece colgada.
+
+## Aclaraciones
+
+- Los 9 ciclos por coeficiente son una **estimación**, no una medición. Hay que confirmarlo con el contador DWT o con un GPIO en el osciloscopio, como está en la sección 11 del análisis. Además, si el build Debug compila sin optimización (`-O0`), el costo real es todavía peor.
+- A 8 y 16 kHz sí entra, y a 22 kHz queda al límite. Las alternativas para 44 y 48 kHz son:
+  - un FIR propio que aproveche la simetría de los coeficientes, aunque a 48 kHz sigue sin entrar del todo;
+  - el promedio móvil en cascada, consultándolo antes con la cátedra;
+  - documentar la limitación con la medición, que es una conclusión válida para el informe.
