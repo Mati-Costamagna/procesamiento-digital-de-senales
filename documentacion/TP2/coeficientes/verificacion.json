@@ -1,0 +1,508 @@
+[
+ {
+  "clave": "PB",
+  "fs": 8000,
+  "N": 33,
+  "taps": 34,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -33.44,
+   "paso_min_db": -0.387,
+   "paso_max_db": 0.371,
+   "transicion_max_db": -0.39
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -33.42,
+   "paso_min_db": -0.387,
+   "paso_max_db": 0.371,
+   "transicion_max_db": -0.39,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PB",
+  "fs": 16000,
+  "N": 63,
+  "taps": 64,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.17,
+   "paso_min_db": -0.501,
+   "paso_max_db": 0.474,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.19,
+   "paso_min_db": -0.502,
+   "paso_max_db": 0.474,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PB",
+  "fs": 22000,
+  "N": 87,
+  "taps": 88,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.21,
+   "paso_min_db": -0.499,
+   "paso_max_db": 0.472,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.22,
+   "paso_min_db": -0.5,
+   "paso_max_db": 0.474,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PB",
+  "fs": 44000,
+  "N": 173,
+  "taps": 174,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.03,
+   "paso_min_db": -0.51,
+   "paso_max_db": 0.481,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.96,
+   "paso_min_db": -0.511,
+   "paso_max_db": 0.482,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PB",
+  "fs": 48000,
+  "N": 189,
+  "taps": 190,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.09,
+   "paso_min_db": -0.507,
+   "paso_max_db": 0.478,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.04,
+   "paso_min_db": -0.508,
+   "paso_max_db": 0.48,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PA",
+  "fs": 8000,
+  "N": 260,
+  "taps": 262,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.15,
+   "paso_min_db": -0.508,
+   "paso_max_db": 0.479,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.22,
+   "paso_min_db": -0.509,
+   "paso_max_db": 0.481,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PA",
+  "fs": 16000,
+  "N": 518,
+  "taps": 520,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.03,
+   "paso_min_db": -0.513,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.0,
+   "paso_min_db": -0.517,
+   "paso_max_db": 0.489,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PA",
+  "fs": 22000,
+  "N": 712,
+  "taps": 714,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.02,
+   "paso_min_db": -0.514,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.89,
+   "paso_min_db": -0.519,
+   "paso_max_db": 0.491,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PA",
+  "fs": 44000,
+  "N": 1432,
+  "taps": 1434,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.2,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.36,
+   "paso_min_db": -0.532,
+   "paso_max_db": 0.498,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PA",
+  "fs": 48000,
+  "N": 1562,
+  "taps": 1564,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.2,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.18,
+   "paso_min_db": -0.52,
+   "paso_max_db": 0.498,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PBanda",
+  "fs": 8000,
+  "N": 260,
+  "taps": 262,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.1,
+   "paso_min_db": -0.508,
+   "paso_max_db": 0.48,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -31.05,
+   "paso_min_db": -0.51,
+   "paso_max_db": 0.482,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PBanda",
+  "fs": 16000,
+  "N": 520,
+  "taps": 522,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.08,
+   "paso_min_db": -0.509,
+   "paso_max_db": 0.481,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.95,
+   "paso_min_db": -0.513,
+   "paso_max_db": 0.483,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "PBanda",
+  "fs": 22000,
+  "N": 714,
+  "taps": 716,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.04,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.89,
+   "paso_min_db": -0.52,
+   "paso_max_db": 0.486,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PBanda",
+  "fs": 44000,
+  "N": 1434,
+  "taps": 1436,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.04,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.78,
+   "paso_min_db": -0.517,
+   "paso_max_db": 0.487,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "PBanda",
+  "fs": 48000,
+  "N": 1564,
+  "taps": 1566,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -31.03,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -30.79,
+   "paso_min_db": -0.517,
+   "paso_max_db": 0.487,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_fiel",
+  "fs": 8000,
+  "N": 1108,
+  "taps": 1110,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.1,
+   "paso_min_db": -0.509,
+   "paso_max_db": 0.48,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.06,
+   "paso_min_db": -0.514,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "EB_fiel",
+  "fs": 16000,
+  "N": 2218,
+  "taps": 2220,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.17,
+   "paso_min_db": -0.505,
+   "paso_max_db": 0.477,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.15,
+   "paso_min_db": -0.515,
+   "paso_max_db": 0.49,
+   "transicion_max_db": -0.5,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_fiel",
+  "fs": 22000,
+  "N": 3050,
+  "taps": 3052,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.2,
+   "paso_min_db": -0.512,
+   "paso_max_db": 0.484,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.16,
+   "paso_min_db": -0.52,
+   "paso_max_db": 0.495,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_liviana",
+  "fs": 8000,
+  "N": 450,
+  "taps": 452,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.07,
+   "paso_min_db": -0.511,
+   "paso_max_db": 0.483,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.02,
+   "paso_min_db": -0.514,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": true
+  }
+ },
+ {
+  "clave": "EB_liviana",
+  "fs": 16000,
+  "N": 898,
+  "taps": 900,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.02,
+   "paso_min_db": -0.514,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.0,
+   "paso_min_db": -0.519,
+   "paso_max_db": 0.49,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_liviana",
+  "fs": 22000,
+  "N": 1236,
+  "taps": 1238,
+  "metodo": "remez",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.04,
+   "paso_min_db": -0.513,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -25.99,
+   "paso_min_db": -0.521,
+   "paso_max_db": 0.49,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_liviana",
+  "fs": 44000,
+  "N": 2488,
+  "taps": 2490,
+  "metodo": "programación lineal",
+  "flotante": {
+   "ok": true,
+   "rechazo_db": -26.17,
+   "paso_min_db": -0.514,
+   "paso_max_db": 0.485,
+   "transicion_max_db": -0.5
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -25.83,
+   "paso_min_db": -0.526,
+   "paso_max_db": 0.495,
+   "transicion_max_db": -0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ },
+ {
+  "clave": "EB_liviana",
+  "fs": 48000,
+  "N": 7602,
+  "taps": 7604,
+  "metodo": "Kaiser (header original)",
+  "flotante": {
+   "ok": false,
+   "rechazo_db": -26.02,
+   "paso_min_db": -0.16,
+   "paso_max_db": 0.193,
+   "transicion_max_db": 0.51
+  },
+  "q15_vs_consigna": {
+   "rechazo_db": -26.02,
+   "paso_min_db": -0.16,
+   "paso_max_db": 0.193,
+   "transicion_max_db": 0.51,
+   "cumple_consigna": true,
+   "dentro_de_apass": false
+  }
+ }
+]
