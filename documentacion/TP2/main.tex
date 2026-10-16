@@ -153,27 +153,6 @@ filtrado se usa la biblioteca CMSIS-DSP en aritmética q15, con el mismo
 formato del buffer del Laboratorio~1.
 \end{nota}
 
-\subsection{Correspondencia con la presentación}
-
-\begin{table}[H]
-\centering
-\caption{Dónde se encuentra cada ítem pedido en la presentación.}
-\label{tab:entregables}
-\begin{tabular}{@{}l l@{}}
-\toprule
-\textbf{Ítem pedido} & \textbf{Ubicación en este informe}\\
-\midrule
-Configuración del ambiente          & Sección~\ref{sec:ambiente}\\
-Diseño de los filtros               & Sección~\ref{sec:filtros}\\
-Diagrama de diseño de la aplicación & Sección~\ref{sec:diseno}\\
-Código fuente del proyecto          & Sección~\ref{sec:implementacion} y
-                                      Anexo~\ref{sec:codigo}\\
-Programa corriendo                  & Demostración en clase; evidencia en
-                                      sección~\ref{sec:verificacion}\\
-\bottomrule
-\end{tabular}
-\end{table}
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \ejercicio{Configuración del ambiente}\label{sec:ambiente}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -381,6 +360,19 @@ Los bordes se ubicaron así:
 
 \subsubsection{Método de diseño: ventana de Kaiser}
 
+Un filtro FIR se puede diseñar por cuatro familias de métodos: por ventanas, por
+suavizado de la banda de transición, por muestreo en frecuencia y por métodos
+óptimos (los algoritmos de Parks-McClellan y de Remez). En este trabajo se usó
+el primero. Su punto de partida es la respuesta impulsional del filtro ideal,
+una función sinc de duración infinita. Si simplemente se la trunca a $N$
+coeficientes, equivale a multiplicarla por una ventana rectangular, y en
+frecuencia eso convoluciona la respuesta ideal con la transformada de esa
+ventana: aparece el efecto Gibbs, un rizado que no disminuye aunque se agreguen
+coeficientes, y una atenuación de rechazo de sólo unos
+\qty{21}{\deci\bel}. Multiplicar por una ventana que decae suavemente hacia los
+extremos elimina el corte abrupto y baja el rizado, a cambio de ensanchar la
+banda de transición. La elección de la ventana fija entonces ese compromiso.
+
 Los cuatro filtros se diseñaron por el método de ventaneo con ventana de
 Kaiser: se trunca la respuesta impulsional ideal del filtro y se la multiplica
 por una ventana cuyo parámetro $\beta$ regula el compromiso entre la
@@ -411,6 +403,65 @@ El orden $M$ que requiere la ventana de Kaiser se estima con
 donde $\Delta f$ es la banda de transición más angosta del filtro. La
 ecuación~\eqref{eq:kaiser} se usa en la sección~\ref{sec:taps} para explicar
 la cantidad de coeficientes de cada filtro.
+
+Como regla práctica, la teoría estima la longitud como $M \approx 4/BW$, con $BW$
+la banda de transición normalizada a $f_s$, medida entre el \qty{99}{\percent}
+de la banda de paso y el \qty{1}{\percent} de la de rechazo. Es la misma
+proporcionalidad inversa con la transición que contiene la
+ecuación~\eqref{eq:kaiser}, sólo que sin depender de la atenuación. Esos
+márgenes de \qty{1}{\percent} corresponden a unos \qty{40}{\deci\bel}, más
+exigentes que los \qtyrange{25}{30}{\deci\bel} pedidos, por eso la regla
+sobrestima: para el PA a \qty{8}{\kilo\sps} ($BW = 15/8000$) da unos
+\num{2133} coeficientes, frente a los 822 de la ecuación~\eqref{eq:kaiser}.
+
+\paragraph{Comparación con otras ventanas.} Entre los métodos de ventaneo, las
+ventanas fijas tienen una atenuación en la banda de rechazo determinada por su
+forma y no ajustable: el diseñador sólo elige la cantidad de coeficientes. Con
+los valores de la tabla de ventanas de la cátedra (tabla~\ref{tab:ventanas}), el error de aproximación
+pico es de \qty{-21}{\deci\bel} para la rectangular, \qty{-25}{\deci\bel} para
+la triangular, \qty{-44}{\deci\bel} para la de Hann, \qty{-53}{\deci\bel} para
+la de Hamming y \qty{-74}{\deci\bel} para la de Blackman, con anchos de
+transición equivalentes de $1{,}81\pi/N$, $2{,}37\pi/N$, $5{,}01\pi/N$,
+$6{,}27\pi/N$ y $9{,}19\pi/N$. Con las especificaciones de este trabajo
+(\qty{30}{\deci\bel} en el PB, el PA y el PBanda, y \qty{25}{\deci\bel} en el
+EB) la rectangular no alcanza, y las de Hann, Hamming y Blackman cumplen con un
+exceso de atenuación que se paga en ancho de transición. Para $A =
+\qty{30}{\deci\bel}$, la ecuación~\eqref{eq:kaiser} da $M \approx
+9{,}6/\Delta\omega$, mientras que Hann necesitaría $\approx 15{,}7/\Delta\omega$,
+Hamming $\approx 19{,}7/\Delta\omega$ y Blackman $\approx 28{,}9/\Delta\omega$:
+$1{,}6$, $2{,}0$ y $3{,}0$ veces más coeficientes, lo que es
+crítico cuando el EB a \qty{48}{\kilo\sps} ya necesita \num{7604}. El único
+caso en que una ventana fija coincide con Kaiser es el del EB: la triangular
+($\approx 7{,}4/\Delta\omega$) equivale a Kaiser con $\beta = 1{,}33$, el valor
+que resulta para \qty{25}{\deci\bel}, pero con margen nulo, y no existe una
+ventana fija equivalente para los \qty{30}{\deci\bel} del resto. La ventana de
+Kaiser evita ese problema porque el parámetro $\beta$ ajusta la atenuación al
+valor pedido, y además tiene una fórmula cerrada para estimar el orden a partir
+de $A$ y $\Delta\omega$, lo que permite prever la cantidad de coeficientes y la
+carga de CPU antes de diseñar el filtro.
+
+\begin{table}[H]
+\centering
+\caption{Ventanas fijas frente a Kaiser (valores de la tabla de ventanas de la
+cátedra). La última columna es la cantidad de coeficientes respecto de Kaiser
+para $A = \qty{30}{\deci\bel}$.}
+\label{tab:ventanas}
+\begin{tabular}{@{}l c r r c r r@{}}
+\toprule
+\textbf{Ventana} & \textbf{Lóbulo} & \textbf{Lóbulo} & \textbf{Atenuación} &
+\textbf{$\beta$} & \textbf{Transición} & \textbf{Coef.}\\
+ & \textbf{principal} & \textbf{lateral [dB]} & \textbf{[dB]} &
+\textbf{equiv.} & \textbf{equiv.} & \textbf{vs.\ Kaiser}\\
+\midrule
+Rectangular & $4\pi/N$  & $-13$ & $-21$ & 0    & $1{,}81\pi/N$ & no cumple\\
+Triangular  & $8\pi/N$  & $-27$ & $-25$ & 1,33 & $2{,}37\pi/N$ & no cumple\\
+Hann        & $8\pi/N$  & $-32$ & $-44$ & 3,86 & $5{,}01\pi/N$ & $1{,}6\times$\\
+Hamming     & $8\pi/N$  & $-43$ & $-53$ & 4,86 & $6{,}27\pi/N$ & $2{,}0\times$\\
+Blackman    & $12\pi/N$ & $-58$ & $-74$ & 7,04 & $9{,}19\pi/N$ & $3{,}0\times$\\
+Kaiser ($A = \qty{30}{\deci\bel}$) & --- & --- & $-30$ & 2,12 & $3{,}07\pi/N$ & $1{,}0\times$\\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \paragraph{Comparación con el diseño equiripple.} La alternativa habitual,
 y la que \texttt{fdatool} propone por defecto, es el diseño equiripple por el
@@ -797,6 +848,25 @@ trunca a 15 bits fraccionarios y se satura a 1.15. La única pérdida de
 precisión, además de la cuantización de los coeficientes, ocurre en ese
 último paso.
 
+\subsubsection{Estructura de implementación}
+
+\texttt{arm\_fir\_q15()} realiza el cálculo con la estructura directa: una
+línea de retardo de $N$ muestras y $N$ multiplicaciones por muestra de salida,
+una por coeficiente. Los cuatro filtros son de fase lineal, así que sus
+coeficientes son simétricos, $b_k = b_{N-1-k}$. La teoría presenta para ese
+caso la estructura directa de fase lineal, que suma primero las muestras que
+comparten coeficiente,
+\begin{equation}
+  y[n] = \sum_{k=0}^{N/2-1} b_k\,\bigl(x[n-k] + x[n-N+1+k]\bigr),
+\end{equation}
+y reduce las multiplicaciones a la mitad ($N$ par). \texttt{arm\_fir\_q15()}
+no aprovecha esa simetría, de modo que con ella se podría bajar la carga de
+CPU de la sección~\ref{sec:carga}. No se implementó porque exige escribir el
+filtro propio en lugar de usar la biblioteca, y porque la suma previa de dos
+muestras q15 puede desbordar los 16 bits y requiere trabajar en 32. Las
+sumas y los accesos a memoria no se reducen, así que el ahorro de ciclos
+sería menor al de multiplicaciones.
+
 \subsubsection{Instancias de los filtros}\label{sec:instancias}
 
 Cada filtro de CMSIS-DSP se representa con una estructura
@@ -977,6 +1047,15 @@ de llamar a la función con una sola muestra. En la
 sección~\ref{sec:verificacion} se mide; si difiere, basta cambiar
 \texttt{\textbackslash ciclosportap} en el preámbulo de \archivo{main.tex} y la
 tabla~\ref{tab:carga} se recalcula.
+
+La teoría advierte además que un filtro FIR escrito directamente en C con
+índices de arreglo (\texttt{x[i]}) es ineficiente en tiempo real: necesita
+muchas operaciones de aritmética de direcciones y accede varias veces al
+arreglo de salida. La solución que propone es usar punteros y las funciones
+intrínsecas del IDE, que es lo que ya resuelve CMSIS-DSP. Esa es una razón
+para usar \texttt{arm\_fir\_q15()} en lugar de un lazo propio. También indica
+que, si la biblioteca se compila con \texttt{-O0}, se pierde parte de esa
+ventaja y el costo por coeficiente puede resultar mayor al estimado.
 \end{nota}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1269,7 +1348,5 @@ El proyecto completo de MCUXpresso (incluidos los archivos generados por
 Config Tools, los drivers del SDK, CMSIS-DSP y \archivo{source/filtros.h})
 está en la carpeta \archivo{TP2/} del repositorio
 \url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}.
-\completar{Agregar \archivo{generar_filtros.m} al repositorio e indicar su
-ubicación.}
 
 \end{document}
