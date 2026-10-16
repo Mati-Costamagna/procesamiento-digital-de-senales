@@ -157,7 +157,7 @@ pin_labels:
 - {pin_num: G4, pin_signal: PIO1_18/FREQME_CLK_IN0/FC5_P2/FC3_P6/CT3_MAT0/SCT0_IN6/FLEXIO0_D26/SMARTDMA_PIO14/PLU_IN4/ENET0_COL/CAN0_TXD/ADC1_A18, label: 'P1_18/J9[6]'}
 - {pin_num: J4, pin_signal: VSS1, label: GND}
 - {pin_num: L4, pin_signal: PIO1_22/TRIG_IN3/FC5_P6/FC4_P2/CT_INP14/SCT0_OUT4/FLEXIO0_D30/SMARTDMA_PIO18/ADC1_A22, label: 'P1_22/J9[24]/J3[3]/SJ9[3]'}
-- {pin_num: M4, pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, label: 'P1_23/J9[23]/SJ1[1]'}
+- {pin_num: M4, pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, label: 'P1_23/J9[23]/SJ1[1]', identifier: SEL}
 - {pin_num: N4, pin_signal: PIO2_11/TRACE_DATA3/SCT0_IN5/PWM1_X3/FLEXIO0_D19/SMARTDMA_PIO30/FLEXSPI0_B_DATA7/SINC0_MBIT4/SAI1_TXD1, label: 'P2_11/J8[16]'}
 - {pin_num: P4, pin_signal: VDD_P40, label: VDD_P4}
 - {pin_num: R4, pin_signal: VDD_ANA, label: 'VDD_ANA/J2[16]'}
@@ -627,6 +627,8 @@ BOARD_InitBUTTONsPins:
   - {pin_num: B7, peripheral: GPIO0, signal: 'GPIO, 23', pin_signal: PIO0_23/WUU0_IN5/EWM0_OUT_b/FC1_P3/CT_INP3/FLEXIO0_D7/ADC0_A15/CMP2_IN2, direction: INPUT, gpio_per_interrupt_sel: output1,
     gpio_per_interrupt: kGPIO_InterruptFallingEdge, slew_rate: fast, open_drain: disable, drive_strength: low, pull_select: up, pull_enable: enable, input_buffer: enable,
     invert_input: normal}
+  - {pin_num: M4, peripheral: GPIO1, signal: 'GPIO, 23', pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, direction: INPUT, gpio_per_interrupt: kGPIO_InterruptFallingEdge,
+    pull_select: up, pull_enable: enable}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -641,8 +643,12 @@ void BOARD_InitBUTTONsPins(void)
 {
     /* Enables the clock for GPIO0: Enables clock */
     CLOCK_EnableClock(kCLOCK_Gpio0);
+    /* Enables the clock for GPIO1: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Gpio1);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
+    /* Enables the clock for PORT1: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port1);
 
     gpio_pin_config_t SW3_config = {
         .pinDirection = kGPIO_DigitalInput,
@@ -658,6 +664,13 @@ void BOARD_InitBUTTONsPins(void)
     /* Initialize GPIO functionality on pin PIO0_23 (pin B7)  */
     GPIO_PinInit(BOARD_INITBUTTONSPINS_SW2_GPIO, BOARD_INITBUTTONSPINS_SW2_PIN, &SW2_config);
 
+    gpio_pin_config_t SEL_config = {
+        .pinDirection = kGPIO_DigitalInput,
+        .outputLogic = 0U
+    };
+    /* Initialize GPIO functionality on pin PIO1_23 (pin M4)  */
+    GPIO_PinInit(BOARD_INITBUTTONSPINS_SEL_GPIO, BOARD_INITBUTTONSPINS_SEL_PIN, &SEL_config);
+
     GPIO0->ICR[23] = ((GPIO0->ICR[23] &
                        /* Mask bits to zero which are setting */
                        (~(GPIO_ICR_IRQS_MASK | GPIO_ICR_ISF_MASK)))
@@ -670,6 +683,9 @@ void BOARD_InitBUTTONsPins(void)
 
     /* Interrupt configuration on GPIO0_6 (pin C14): Interrupt on falling edge */
     GPIO_SetPinInterruptConfig(BOARD_INITBUTTONSPINS_SW3_GPIO, BOARD_INITBUTTONSPINS_SW3_PIN, kGPIO_InterruptFallingEdge);
+
+    /* Interrupt configuration on GPIO1_23 (pin M4): Interrupt on falling edge */
+    GPIO_SetPinInterruptConfig(BOARD_INITBUTTONSPINS_SEL_GPIO, BOARD_INITBUTTONSPINS_SEL_PIN, kGPIO_InterruptFallingEdge);
 
     const port_pin_config_t SW2 = {/* Internal pull-up resistor is enabled */
                                    .pullSelect = kPORT_PullUp,
@@ -716,6 +732,22 @@ void BOARD_InitBUTTONsPins(void)
                                    .lockRegister = kPORT_UnlockRegister};
     /* PORT0_6 (pin C14) is configured as PIO0_6 */
     PORT_SetPinConfig(BOARD_INITBUTTONSPINS_SW3_PORT, BOARD_INITBUTTONSPINS_SW3_PIN, &SW3);
+
+    /* PORT1_23 (pin M4) is configured as PIO1_23 */
+    PORT_SetPinMux(BOARD_INITBUTTONSPINS_SEL_PORT, BOARD_INITBUTTONSPINS_SEL_PIN, kPORT_MuxAlt0);
+
+    PORT1->PCR[23] = ((PORT1->PCR[23] &
+                       /* Mask bits to zero which are setting */
+                       (~(PORT_PCR_PS_MASK | PORT_PCR_PE_MASK | PORT_PCR_IBE_MASK)))
+
+                      /* Pull Select: Enables internal pullup resistor. */
+                      | PORT_PCR_PS(PCR_PS_ps1)
+
+                      /* Pull Enable: Enables. */
+                      | PORT_PCR_PE(PCR_PE_pe1)
+
+                      /* Input Buffer Enable: Enables. */
+                      | PORT_PCR_IBE(PCR_IBE_ibe1));
 }
 
 /* clang-format off */

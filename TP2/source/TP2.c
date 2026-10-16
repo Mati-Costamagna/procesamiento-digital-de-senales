@@ -9,10 +9,12 @@
  * @file    TP2.c
  * @brief   TP2 - Filtros FIR por muestras (CMSIS-DSP, Q15) en FRDM-MCXN947.
  *
- * Boton GPIO0 INT0: cambia la frecuencia de muestreo (8k, 16k, 22k, 44k, 48k).
+  * Boton GPIO0 INT0: cambia la frecuencia de muestreo (8k, 16k, 22k, 44k, 48k).
  *                   El color del LED indica la fs (igual que en el Lab #1).
- * Boton GPIO0 INT1: recorre BYPASS -> PB -> PA -> PBanda -> EB -> BYPASS ...
- *                   (habilita el filtro o hace bypass al buffer de salida).
+ * Boton GPIO0 INT1: recorre PB -> PA -> PBanda -> EB -> PB ...
+ * Pin   GPIO1 INT0: (P1_23, J1-8) alterna lo que va al DAC: buffer de salida
+ *                   (filtrado) o muestra tomada del ADC (sin filtrar).
+ *                   El FIR se calcula siempre, en los dos modos.
  */
 #include <filtros.h>      /* generado con generar_filtros.m */
 #include <stdio.h>
@@ -38,8 +40,9 @@
 #define LED_RED_PIN   10U    /* P0_10 -> GPIO0 */
 #define LED_GREEN_PIN 27U    /* P0_27 -> GPIO0 */
 #define LED_BLUE_PIN  2U     /* P1_2  -> GPIO1 */
-#define SW2_PIN       23U    /* P0_23: cambia la fs        -> GPIO0 INT0 */
-#define SW3_PIN       6U     /* P0_6 : bypass / tipo filtro -> GPIO0 INT1 */
+#define SW2_PIN       23U    /* P0_23: tipo de filtro      -> GPIO0 INT1 */
+#define SW3_PIN       6U     /* P0_6 : cambia la fs        -> GPIO0 INT0 */
+#define SEL_PIN       23U    /* P1_23: filtrado / sin filtrar -> GPIO1 INT0 */
 
 /* Si las Config Tools no generaron los nombres de los handlers, se usan
  * directamente los del vector de interrupciones. */
@@ -49,13 +52,14 @@
 #ifndef GPIO0_INT_1_IRQHANDLER
 #define GPIO0_INT_1_IRQHANDLER GPIO01_IRQHandler
 #endif
+#ifndef GPIO1_INT_0_IRQHANDLER
+#define GPIO1_INT_0_IRQHANDLER GPIO10_IRQHandler
+#endif
 
 #define BUFFER_SIZE 512
 #define BLOCK_SIZE  1        /* procesamiento por muestras */
 
 #define ADC_MID   2048       /* mitad de escala del DAC (12 bits) */
-
-#define BYPASS 0             /* filter_counter: 0 = bypass, 1..4 = PB, PA, PBanda, EB */
 
 /* Cantidad de frecuencias de muestreo del ADC (8k, 16k, 22k, 44k, 48k),
  * independiente de cuantas filas de filtros traiga FiltrosTP2.h */
@@ -67,7 +71,8 @@
 #define FILA_FILTRO(fs) ((SOLO_8K || NUM_FS == 1) ? K8 : (fs))
 
 volatile int state_counter  = 0;   /* indice de fs de muestreo (0..4) */
-volatile int filter_counter = BYPASS;
+volatile int filter_counter = PB;  /* tipo de filtro: PB, PA, PBANDA, EB */
+volatile bool salida_filtrada = true; /* false: al DAC va la muestra del ADC */
 
 uint32_t sample_vel[NUM_FS_MUESTREO] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
 
@@ -123,8 +128,8 @@ static void aplicar_seleccion(void) {
 //	int fs = 0;
 	int f  = filter_counter;
 	cambio_filtro = false;
-	if (f != BYPASS && pte_aux != NULL) {
-		pte_aux = &arreglo_filtros[FILA_FILTRO(fs)][f - 1];
+	if (pte_aux != NULL) {
+		pte_aux = &arreglo_filtros[FILA_FILTRO(fs)][f];
 		memset(estado_fir, 0, sizeof(estado_fir));   /* sin historia del filtro anterior */
 	}
 }
@@ -194,10 +199,22 @@ void GPIO0_INT_0_IRQHANDLER(void) {
 void GPIO0_INT_1_IRQHANDLER(void) {
   uint32_t pin_flags1 = GPIO_GpioGetInterruptChannelFlags(GPIO0, 1U);
 
-  filter_counter = (filter_counter + 1) % (NUM_TIPOS + 1);
+  filter_counter = (filter_counter + 1) % (NUM_TIPOS);
   cambio_filtro = true;
 
   GPIO_GpioClearInterruptChannelFlags(GPIO0, pin_flags1, 1U);
+  #if defined __CORTEX_M && (__CORTEX_M == 4U)
+    __DSB();
+  #endif
+}
+
+/* GPIO10_IRQn interrupt handler: salida filtrada / sin filtrar */
+void GPIO1_INT_0_IRQHANDLER(void) {
+  uint32_t pin_flags = GPIO_GpioGetInterruptChannelFlags(GPIO1, 0U);
+
+  salida_filtrada = !salida_filtrada;
+
+  GPIO_GpioClearInterruptChannelFlags(GPIO1, pin_flags, 0U);
   #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
   #endif
@@ -223,14 +240,14 @@ void ADC0_IRQHANDLER(void) {
     /* ADC de 16 bits (kLPADC_ConversionResolutionHigh): 0..65535 -> Q15 centrado en 0 */
     buffer_in[index_buffer] = (q15_t)((int32_t)result.convValue - 32768);
 
-    if (filter_counter == BYPASS || pte_aux == NULL) {
-      buffer_out[index_buffer] = buffer_in[index_buffer];      /* bypass */
-    } else {
+    /* El FIR corre siempre; el pin de GPIO1 solo elige que va al DAC */
+    if (pte_aux != NULL) {
       arm_fir_q15(pte_aux, &buffer_in[index_buffer], &buffer_out[index_buffer], BLOCK_SIZE);
     }
+    q15_t salida = salida_filtrada ? buffer_out[index_buffer] : buffer_in[index_buffer];
 
     /* Q15 -> 12 bits para el DAC */
-    int32_t out_dac = ((int32_t)buffer_out[index_buffer] / 16) + ADC_MID;
+    int32_t out_dac = ((int32_t)salida / 16) + ADC_MID;
     if (out_dac < 0)    out_dac = 0;
     if (out_dac > 4095) out_dac = 4095;
     DAC_SetData(DAC0, (uint16_t)out_dac);

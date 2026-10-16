@@ -69,7 +69,7 @@
                <pin_label pin_num="G4" pin_signal="PIO1_18/FREQME_CLK_IN0/FC5_P2/FC3_P6/CT3_MAT0/SCT0_IN6/FLEXIO0_D26/SMARTDMA_PIO14/PLU_IN4/ENET0_COL/CAN0_TXD/ADC1_A18" label="P1_18/J9[6]"/>
                <pin_label pin_num="J4" pin_signal="VSS1" label="GND"/>
                <pin_label pin_num="L4" pin_signal="PIO1_22/TRIG_IN3/FC5_P6/FC4_P2/CT_INP14/SCT0_OUT4/FLEXIO0_D30/SMARTDMA_PIO18/ADC1_A22" label="P1_22/J9[24]/J3[3]/SJ9[3]"/>
-               <pin_label pin_num="M4" pin_signal="PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23" label="P1_23/J9[23]/SJ1[1]"/>
+               <pin_label pin_num="M4" pin_signal="PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23" label="P1_23/J9[23]/SJ1[1]" identifier="SEL"/>
                <pin_label pin_num="N4" pin_signal="PIO2_11/TRACE_DATA3/SCT0_IN5/PWM1_X3/FLEXIO0_D19/SMARTDMA_PIO30/FLEXSPI0_B_DATA7/SINC0_MBIT4/SAI1_TXD1" label="P2_11/J8[16]"/>
                <pin_label pin_num="P4" pin_signal="VDD_P40" label="VDD_P4"/>
                <pin_label pin_num="R4" pin_signal="VDD_ANA" label="VDD_ANA/J2[16]"/>
@@ -503,6 +503,11 @@
                         <data>true</data>
                      </feature>
                   </dependency>
+                  <dependency resourceType="Peripheral" resourceId="GPIO1" description="Peripheral GPIO1 signals are routed in the Pins Tool, but the peripheral is not initialized in the Peripherals Tool." problem_level="1" source="Pins:BOARD_InitBUTTONsPins">
+                     <feature name="initialized" evaluation="equal">
+                        <data>true</data>
+                     </feature>
+                  </dependency>
                   <dependency resourceType="SWComponent" resourceId="platform.drivers.common" description="Pins initialization requires the COMMON Driver in the project." problem_level="2" source="Pins:BOARD_InitBUTTONsPins">
                      <feature name="enabled" evaluation="equal" configuration="cm33_core0">
                         <data>true</data>
@@ -545,6 +550,14 @@
                         <pin_feature name="pull_enable" value="enable"/>
                         <pin_feature name="input_buffer" value="enable"/>
                         <pin_feature name="invert_input" value="normal"/>
+                     </pin_features>
+                  </pin>
+                  <pin peripheral="GPIO1" signal="GPIO, 23" pin_num="M4" pin_signal="PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23">
+                     <pin_features>
+                        <pin_feature name="direction" value="INPUT"/>
+                        <pin_feature name="gpio_per_interrupt" value="kGPIO_InterruptFallingEdge"/>
+                        <pin_feature name="pull_select" value="up"/>
+                        <pin_feature name="pull_enable" value="enable"/>
                      </pin_features>
                   </pin>
                </pins>
@@ -1026,6 +1039,7 @@
                            <struct name="0"/>
                            <struct name="1"/>
                            <struct name="2"/>
+                           <struct name="3"/>
                         </array>
                         <array name="interrupts"/>
                      </config_set>
@@ -1177,6 +1191,34 @@
                            <setting name="enable_custom_name" value="false"/>
                         </struct>
                         <setting name="enable_irq_1" value="true"/>
+                        <struct name="gpio_interrupt_1">
+                           <setting name="IRQn" value="GPIO01_IRQn"/>
+                           <setting name="enable_interrrupt" value="enabled"/>
+                           <setting name="enable_priority" value="false"/>
+                           <setting name="priority" value="1"/>
+                           <setting name="enable_custom_name" value="false"/>
+                        </struct>
+                        <setting name="enable_irq_EFT" value="false"/>
+                        <struct name="port_interrupt_EFT">
+                           <setting name="IRQn" value="noInt"/>
+                           <setting name="enable_interrrupt" value="enabled"/>
+                           <setting name="enable_priority" value="false"/>
+                           <setting name="priority" value="2"/>
+                           <setting name="enable_custom_name" value="false"/>
+                        </struct>
+                     </config_set>
+                  </instance>
+                  <instance name="GPIO1" uuid="9704823c-ca48-47a5-9da0-ded16f727d2e" type="gpio" type_id="gpio_2.7.0" mode="GPIO" peripheral="GPIO1" enabled="true" comment="" custom_name_enabled="true" editing_lock="false">
+                     <config_set name="fsl_gpio">
+                        <setting name="enable_irq" value="true"/>
+                        <struct name="port_interrupt">
+                           <setting name="IRQn" value="GPIO10_IRQn"/>
+                           <setting name="enable_interrrupt" value="enabled"/>
+                           <setting name="enable_priority" value="false"/>
+                           <setting name="priority" value="0"/>
+                           <setting name="enable_custom_name" value="false"/>
+                        </struct>
+                        <setting name="enable_irq_1" value="false"/>
                         <struct name="gpio_interrupt_1">
                            <setting name="IRQn" value="GPIO01_IRQn"/>
                            <setting name="enable_interrrupt" value="enabled"/>
