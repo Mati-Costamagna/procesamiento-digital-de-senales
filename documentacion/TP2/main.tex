@@ -10,6 +10,7 @@
 %  rojo con el nombre esperado):
 %     img/unc_logo.png, img/fcefyn_logo.png      (los mismos del TP1)
 %     img/peripherals-lpadc-tp2.png              Config Tools > ADC0 en 16 bits
+%     img/pins-tsi-tp2.png                       Config Tools > Pins: P1_3 como TSI0_CH3
 %     img/fda-pb-8k.png                          fdatool: respuesta del PB a 8 kS/s
 %     img/fda-pa-8k.png                          fdatool: respuesta del PA a 8 kS/s
 %     img/fda-pbanda-8k.png                      fdatool: respuesta del PBanda a 8 kS/s
@@ -48,7 +49,7 @@
 \docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides \quad\textperiodcentered\quad Ferreyra, Pablo Alejandro}
 \fechaentrega{\today}
 \logoizquierdo{img/unc_logo.png}
-\logoderecho{img/fcefyn_logo.png}
+\logoderecho{img/fcefyn_logo.jpg}
 
 % ---------------- Parametros del diseno (usados en las tablas) ---------------
 % Igual que en el TP1: CTIMER0 a 150 MHz, match 3 en toggle.
@@ -214,12 +215,24 @@ Sobre esa base:
         implementación previa usaba \texttt{fdatool} y el script
         \archivo{generar_filtros.m}, que generaba \archivo{source/filtros.h}
         (sección~\ref{sec:previa}).
-  \item Se agregó el driver \archivo{fsl_tsi_v6} del SDK (carpeta
-        \archivo{drivers}) para leer el touchpad de la placa.
+  \item Se agregó el componente \texttt{tsi\_v6} del SDK (\emph{Manage SDK
+        Components}), con el driver \archivo{fsl_tsi_v6}, para leer el
+        touchpad de la placa.
   \item La lógica de la aplicación se escribió en \archivo{source/TP2.c}.
   \item La depuración se hace con el MCU-Link integrado de la placa, con la
         configuración guardada en \archivo{TP2 LinkServer Debug.launch}.
 \end{enumerate}
+
+\begin{nota}[Agregar componentes del SDK reemplaza los archivos de la placa]
+Al agregar el componente \texttt{tsi\_v6}, MCUXpresso reemplazó los archivos
+generados de \archivo{board/} (\archivo{pin_mux}, \archivo{clock_config} y
+\archivo{peripherals}) por los de la plantilla de la placa: desaparecieron
+las inicializaciones del CTIMER0, el LPADC0, el DAC0 y los GPIO. La
+configuración no se pierde, porque está en \archivo{TP2.mex}; basta volver a
+generar el código desde Config Tools (\emph{Update Code}). Conviene revisar
+los cambios de \archivo{board/} antes de compilar después de agregar un
+componente.
+\end{nota}
 
 \subsection{Relojes y pines}
 
@@ -277,8 +290,10 @@ Inicialización del DAC0 & Config Tools
                       & \texttt{init\_dac()} antes de
                         \texttt{BOARD\_InitBootPeripherals()}\\
 Tecla SW2             & Run/Stop & Selección de filtro (PB, PA, PBanda, EB)\\
-Habilitación del filtro & ---    & Touchpad E1 (TSI0, canal 3, \pin{P1\_3}), leído
-                                   desde el lazo principal\\
+Habilitación del filtro & ---
+                      & Touchpad E1 (TSI0, canal 3, \pin{P1\_3}), leído
+                        desde el lazo principal. Pin y reloj del TSI
+                        (FRO de \qty{12}{\mega\hertz}) en Config Tools\\
 LED RGB               & Color según la $f_s$
                       & Color según la $f_s$; parpadeo según el filtro, fijo
                         con la salida sin filtrar\\
@@ -1321,8 +1336,9 @@ La figura~\ref{fig:bloques} muestra las partes de la aplicación. El camino de
 la señal es el del Laboratorio 1 con un bloque de procesamiento en el medio:
 el CTIMER0 dispara cada conversión a través del INPUTMUX, el LPADC0 deja el
 resultado en su FIFO y la rutina de interrupción lo convierte a q15, lo pasa
-por el filtro activo (o lo copia, en \emph{bypass}) y escribe el resultado en
-el DAC0. Las teclas sólo modifican el estado: SW3 cambia la frecuencia de
+por el filtro activo (o lo copia, en \emph{bypass}) al buffer de salida y
+desde ahí lo escribe en el DAC0; mientras se ejecuta, mantiene en 1 el pin de
+medición \pin{P0\_26}. Las teclas sólo modifican el estado: SW3 cambia la frecuencia de
 muestreo (match del CTIMER0) y SW2 el tipo de filtro. Ambas avisan a la
 rutina del ADC, que es la única que cambia el filtro activo. El lazo
 principal lee el touchpad, que habilita o deshabilita el filtro, y es el
@@ -1333,6 +1349,10 @@ parpadeo, el filtro (sección~\ref{sec:habilitacion}).
 \centering
 \begin{tikzpicture}[x=1cm,y=1cm, every node/.append style={font=\footnotesize}]
   \tikzset{bloque/.append style={minimum width=1.9cm}}
+  % --- Arriba: lo que escribe la ISR del ADC ademas del DAC ---
+  \node[externo] (p26) at (3.2,2.0)  {\pin{P0\_26}\\medición de la ISR};
+  \node[mem]     (buf) at (10.2,2.0) {\texttt{buffer\_in}\\\texttt{buffer\_out}\\512 $\times$ q15};
+
   % --- Fila 1: camino de la señal ---
   \node[externo] (gen) at (0,0)     {Generador\\de señal};
   \node[hw]      (adc) at (3.2,0)   {\periferico{LPADC0}\\canal A0, \qty{16}{\bit}};
@@ -1340,22 +1360,21 @@ parpadeo, el filtro (sección~\ref{sec:habilitacion}).
   \node[hw]      (dac) at (10.2,0)  {\periferico{DAC0}\\\qty{12}{\bit}};
   \node[externo] (osc) at (13.5,0)  {Osciloscopio};
 
-  % --- Fila 2 ---
-  \node[hw]  (mux)  at (3.2,-2.0)  {\periferico{INPUTMUX}};
-  \node[sw]  (fir)  at (6.6,-2.0)  {\texttt{filtrar()}\\multitasa o \emph{bypass}};
-  \node[mem] (coef) at (10.2,-2.0) {\texttt{filtros\_multitasa.h}\\flash};
-  \node[mem] (buf)  at (13.5,-2.0) {\texttt{buffer\_in}\\\texttt{buffer\_out}\\512 $\times$ q15};
+  % --- Fila 2: disparo, filtrado y lazo principal ---
+  \node[hw] (mux)  at (3.2,-2.3)  {\periferico{INPUTMUX}};
+  \node[sw] (fir)  at (6.6,-2.3)  {\texttt{filtrar()}\\multitasa o \emph{bypass}};
+  \node[sw] (lazo) at (10.2,-2.3) {Lazo principal\\(\texttt{main()})};
+  \node[hw] (tsi)  at (13.5,-2.3) {Touchpad E1\\\periferico{TSI0}};
 
   % --- Fila 3 ---
-  \node[externo] (p19) at (0,-4.0)    {\pin{P0\_19}\\punto de prueba};
-  \node[hw]      (tmr) at (3.2,-4.0)  {\periferico{CTIMER0}\\match 3};
-  \node[sw]      (isk) at (6.6,-4.0)  {ISR de\\teclas};
-  \node[hw]      (led) at (10.2,-4.0) {LED RGB};
+  \node[externo] (p19)  at (0,-4.6)    {\pin{P0\_19}\\punto de prueba};
+  \node[hw]      (tmr)  at (3.2,-4.6)  {\periferico{CTIMER0}\\match 3};
+  \node[mem]     (coef) at (6.6,-4.6)  {\texttt{filtros\_multitasa.h}\\flash};
+  \node[sw]      (isk)  at (10.2,-4.6) {ISR de\\teclas};
+  \node[hw]      (led)  at (13.5,-4.6) {LED RGB};
 
   % --- Fila 4 ---
-  \node[hw] (sw) at (6.6,-5.8) {Teclas\\SW3 (velocidad) \,/\, SW2 (filtro)};
-  \node[sw] (lazo) at (10.2,-5.8) {Lazo principal\\(\texttt{main()})};
-  \node[hw] (tsi)  at (13.5,-5.8) {Touchpad E1\\\periferico{TSI0}};
+  \node[hw] (sw) at (10.2,-6.9) {Teclas\\SW3 (velocidad) \,/\, SW2 (filtro)};
 
   % --- Señal ---
   \draw[senal] (gen) -- node[etiqueta,above]{$x(t)$} (adc);
@@ -1366,21 +1385,27 @@ parpadeo, el filtro (sección~\ref{sec:habilitacion}).
   % --- Datos y disparo ---
   \draw[flecha,{Stealth[length=2mm]}-{Stealth[length=2mm]}]
        (isr) -- node[etiqueta,right]{$x[n]$, $y[n]$} (fir);
-  \draw[flecha] (coef) -- node[etiqueta,above]{$b_k$} (fir);
-  \draw[flecha] ([yshift=-3mm]isr.east) -- node[etiqueta,above,sloped,pos=0.75]{guarda} (buf.north west);
+  \draw[flecha] (coef) -- node[etiqueta,right]{$b_k$} (fir);
+  \draw[flecha] ([xshift=4mm]isr.north) |- node[etiqueta,above,pos=0.75]{guarda} (buf.west);
+  \draw[flecha] ([xshift=-4mm]isr.north) |- (p26.east);
   \draw[flecha] (tmr) -- node[etiqueta,right]{MAT3 (toggle)} (mux);
   \draw[flecha] (mux) -- node[etiqueta,right]{trigger 0} (adc);
   \draw[flecha] (tmr) -- (p19);
 
   % --- Control ---
-  \draw[control] (sw)  -- node[etiqueta,right]{flanco $\downarrow$} (isk);
-  \draw[control] (isk) -- node[etiqueta,above]{nuevo MR} (tmr);
-  \draw[control] (lazo) -- node[etiqueta,right]{color y\\parpadeo} (led);
+  \draw[control] ([xshift=5mm]sw.north) -- node[etiqueta,right]{flanco $\downarrow$}
+                 ([xshift=5mm]isk.south);
+  \draw[control] ([xshift=-5mm]isk.south) -- ++(0,-0.5) -| (tmr.south);
+  \node[etiqueta,above] at (6.6,-5.65) {nuevo MR};
+  \draw[control] (isk.north west) -- node[etiqueta,above right]{\texttt{cambio\_filtro}}
+                 (fir.south east);
   \draw[control] (tsi) -- node[etiqueta,above]{toque} (lazo);
-  \draw[control] (isk) -- node[etiqueta,right]{\texttt{cambio\_filtro}} (fir);
+  \draw[control] (lazo) -- node[etiqueta,above]{habilita} (fir);
+  \draw[control] (lazo.south east) -- node[etiqueta,right]{color y\\parpadeo}
+                 (led.north west);
 
   % --- Leyenda ---
-  \begin{scope}[shift={(1.6,-7.2)},every node/.style={font=\scriptsize}]
+  \begin{scope}[shift={(1.6,-8.4)},every node/.style={font=\scriptsize}]
     \foreach \c/\t [count=\k from 0] in {bloquehw/Periférico,bloquesw/Firmware,
                                           bloquemem/Memoria}
       {\fill[\c,draw=azulunc] (2.4*\k,0) rectangle ++(0.35,0.25);
@@ -1488,12 +1513,16 @@ del buffer de salida, como pide la consigna.
 El touchpad se lee desde el lazo principal, sin interrupciones, para no
 competir con la rutina del ADC:
 \begin{itemize}[nosep]
-  \item Al arrancar, \texttt{init\_touch()} configura \pin{P1\_3} como
-        entrada analógica del TSI, le da reloj desde el FRO de
-        \qty{12}{\mega\hertz} (el cristal externo que usa el ejemplo del SDK
-        no está habilitado en este proyecto) y mide la \emph{base}: el
-        promedio de 16 barridos sin tocar. Por eso no hay que tocar el
-        touchpad durante el reset.
+  \item El pin y el reloj se configuran en Config Tools
+        (figura~\ref{fig:pins-tsi}): \pin{P1\_3} como \texttt{TSI0\_CH3}, con
+        el buffer de entrada digital deshabilitado porque es una entrada
+        analógica, y el reloj del TSI desde el FRO de \qty{12}{\mega\hertz}
+        (el cristal externo que usa el ejemplo del SDK no está habilitado en
+        este proyecto).
+  \item Al arrancar, \texttt{init\_touch()} inicializa el TSI en modo
+        self-cap, con disparo por software y sin interrupciones, y mide la
+        \emph{base}: el promedio de 16 barridos sin tocar. Por eso no hay que
+        tocar el touchpad durante el reset.
   \item Cada \qty{10}{\milli\second}, \texttt{touch\_actualizar()} dispara
         un barrido por software y, en las vueltas siguientes del lazo,
         consulta si terminó. Nunca espera: si un barrido no termina en
@@ -1517,10 +1546,15 @@ cada \qty{200}{\milli\second}, lo que permite ajustarlo con la placa.
 \completar{Base medida y cuenta con el dedo apoyado; ajustar
 \texttt{TOQUE\_DELTA} si hace falta.}
 
-El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no se usa:
-\texttt{main()} deshabilita su interrupción después de inicializar los
+El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no está
+asignado en Config Tools. La instancia GPIO1 de la herramienta Peripherals
+todavía habilita la interrupción \texttt{GPIO10\_IRQn}, que era la de ese
+pin, así que \texttt{main()} la deshabilita después de inicializar los
 periféricos, y su rutina sólo limpia la bandera.
-\completar{Quitar la configuración de \pin{P1\_23} en Config Tools.}
+
+\captura{img/pins-tsi-tp2.png}{Config Tools \textemdash{} Pins}{\pin{P1\_3}
+asignado a \texttt{TSI0\_CH3} (touchpad E1), con el buffer de entrada
+deshabilitado.}{fig:pins-tsi}
 
 \paragraph{LED.} El LED RGB conserva el color de cada frecuencia de muestreo
 (tabla~\ref{tab:fs}), y su parpadeo indica el estado del filtro
