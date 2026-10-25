@@ -21,6 +21,9 @@
 %     img/osc-eb.jpeg                            entrada y salida con EB
 %     img/osc-tiempo-isr.jpeg                    pin de prueba: duracion de la ISR
 %
+%  El Anexo incluye ../../TP2/source/filtros_multitasa.h (coeficientes), con
+%  la ruta relativa a esta carpeta.
+%
 %  Todo lo que aparece entre corchetes rojos (\completar{...}) es contenido
 %  que falta llenar. Para la entrega, descomentar \entregafinal: el documento
 %  avisara en el log si quedo alguna marca sin resolver.
@@ -144,15 +147,24 @@ sección~\ref{sec:verificacion}:
         y comparar los resultados.
 \end{enumerate}
 
-\begin{nota}[Extensión respecto de la consigna]
-La consigna pide habilitar o deshabilitar \emph{un} filtro. La implementación
-lo extiende: la tecla SW2 recorre en forma circular los cuatro filtros
-\ref{filtro:pb}--\ref{filtro:eb}, de modo que los cuatro se pueden comparar
-sobre la misma señal sin reprogramar la placa; el touchpad E1 de la placa
-habilita o deshabilita el filtro elegido, y el LED indica con su parpadeo
-cuál está activo (sección~\ref{sec:habilitacion}). Para el
-filtrado se usa la biblioteca CMSIS-DSP en aritmética q15, con el mismo
-formato del buffer del Laboratorio~1.
+\begin{nota}[Diferencias respecto de la consigna]
+La consigna pide aplicar un filtro y, con una tecla, habilitarlo o hacer
+\emph{bypass} a un buffer de salida. La implementación:
+\begin{itemize}[nosep]
+  \item recorre con SW2 los cuatro filtros \ref{filtro:pb}--\ref{filtro:eb},
+        para compararlos sobre la misma señal sin reprogramar la placa;
+  \item habilita o deshabilita el filtro con el touchpad capacitivo E1 de la
+        placa en lugar de un pulsador; en \emph{bypass} copia la muestra de
+        entrada al buffer de salida, del que el DAC lee siempre;
+  \item indica el filtro activo con el parpadeo del LED
+        (sección~\ref{sec:habilitacion});
+  \item implementa el PA, el PBanda y el EB con una estructura multitasa
+        (sección~\ref{sec:multitasa}): siguen siendo FIR y se procesan
+        muestra a muestra, pero no como un único FIR directo.
+\end{itemize}
+El filtrado trabaja en q15, con el mismo formato del buffer del
+Laboratorio~1: \texttt{arm\_fir\_q15()} de CMSIS-DSP para el PB, el LPB y
+los filtros $G$, y código propio para el diezmador y el interpolador.
 \end{nota}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -294,7 +306,8 @@ empieza a ejecutarse y a escribir en el DAC. Por eso \texttt{main()} llama a
 \texttt{init\_dac()} (reloj, alimentación desde el SPC e inicialización del
 DAC0) \emph{antes} de inicializar los periféricos. Los filtros, en cambio, se
 inicializan después: mientras \texttt{filtros\_listos} sea falso, la rutina
-del ADC envía al DAC la muestra sin filtrar.
+del ADC hace \emph{bypass}, es decir, copia la muestra al buffer de salida
+sin filtrarla.
 
 \subsubsection{Prioridades de interrupción}
 
@@ -1156,7 +1169,8 @@ trae todo lo que el firmware necesita para armar la estructura:
 \end{itemize}
 El mismo script escribe \archivo{resumen_multitasa.csv}, con la carga de
 CPU, el retardo y el resultado de la verificación de cada filtro, y grafica
-las respuestas compuestas.
+las respuestas compuestas. El archivo de cabecera completo, con los valores
+de todos los coeficientes, está en el Anexo~\ref{sec:coeficientes}.
 
 \subsection{Comparación con la implementación previa}\label{sec:taps}
 
@@ -1220,6 +1234,41 @@ Firmware   & \texttt{arm\_fir\_q15()} sobre 20 instancias
 \bottomrule
 \end{tabular}
 \end{table}
+
+La tabla~\ref{tab:taps-multitasa} da la cantidad de coeficientes de cada uno
+de los 20 filtros finales, sumando los bloques que usa: el PB, sólo el suyo;
+el PA, $H_D$ y $G_{\text{PA}}$; el PBanda, además, el LPB; y el EB, $H_D$ y
+$G_{\text{EB}}$. $H_D$ se cuenta una vez aunque se usa dos veces (como
+diezmador y como interpolador), y no se cuentan los ceros de relleno. Entre
+paréntesis figura la cantidad del FIR directo equiripple de la
+tabla~\ref{tab:taps-eq}, con las mismas especificaciones.
+
+\begin{table}[H]
+\centering
+\caption{Cantidad de coeficientes de cada filtro en la implementación
+multitasa (entre paréntesis, la del FIR directo equiripple).}
+\label{tab:taps-multitasa}
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{PB} & \textbf{PA} & \textbf{PBanda} & \textbf{EB}\\
+\midrule
+\qty{8000}{\hertz}  & 49 (50)   & 80 (318)   & 137 (316)  & 218 (\num{1108})\\
+\qty{16000}{\hertz} & 93 (94)   & 108 (632)  & 221 (634)  & 246 (\num{2216})\\
+\qty{22000}{\hertz} & 129 (128) & 132 (870)  & 287 (872)  & 270 (\num{3048})\\
+\qty{44000}{\hertz} & 255 (256) & 214 (\num{1744}) & 523 (\num{1746}) & 352 (\num{6124})\\
+\qty{48000}{\hertz} & 279 (278) & 230 (\num{1902}) & 567 (\num{1904}) & 368 (\num{6680})\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los filtros comparten bloques, así que lo que se guarda en flash no es la
+suma de la tabla: $G_{\text{PA}}$ y $G_{\text{EB}}$ son los mismos para las
+cinco $f_s$, y $H_D$ es el mismo para el PA, el PBanda y el EB de cada
+$f_s$. En total son \num{2531} coeficientes distintos, \num{2576} con los
+ceros de relleno, frente a \num{30920} del FIR directo. Los valores están en
+el Anexo~\ref{sec:coeficientes}. La cantidad de coeficientes tampoco es la
+cantidad de productos por muestra (tabla~\ref{tab:carga-multitasa}), porque
+$H_D$ se reparte entre las $M$ muestras y $G$ se calcula una vez cada $M$.
 
 La ventaja principal es que el costo del camino angosto ya no depende de
 $f_s$: $G$ trabaja siempre a \qty{1}{\kilo\hertz}, y lo único que crece con
@@ -1399,9 +1448,10 @@ touchpad E1 de la placa, un electrodo capacitivo conectado a \pin{P1\_3},
 que es el canal 3 del TSI0 (\emph{Touch Sensing Input}). El TSI trabaja en
 modo \emph{self-cap}: carga y descarga la capacidad del electrodo y entrega
 una cuenta que baja cuando un dedo la aumenta. Cada toque invierte
-\texttt{salida\_filtrada}: con 1, la rutina del ADC filtra y envía al DAC la
-salida del filtro; con 0, envía la muestra del ADC sin filtrar y no calcula
-el filtro.
+\texttt{salida\_filtrada}: con 1, la rutina del ADC escribe en el buffer de
+salida la salida del filtro; con 0 hace \emph{bypass}: copia la muestra del
+ADC al buffer de salida y no calcula el filtro. En los dos casos el DAC lee
+del buffer de salida, como pide la consigna.
 
 El touchpad se lee desde el lazo principal, sin interrupciones, para no
 competir con la rutina del ADC:
@@ -1704,8 +1754,8 @@ vez por muestra, y la figura~\ref{fig:flujo-teclas} las de las teclas.
   \draw[flecha] (a2.west) -- node[etiqueta,above,pos=0.3]{no} (-4.4,0 |- a2.west)
                 |- (a11.west);
 \end{tikzpicture}
-\caption{Diagrama de flujo de la rutina de fin de conversión del ADC. La
-salida sin filtrar también se usa mientras \texttt{filtros\_listos} es falso
+\caption{Diagrama de flujo de la rutina de fin de conversión del ADC. El
+\emph{bypass} también se usa mientras \texttt{filtros\_listos} es falso
 (antes de \texttt{init\_filtros()}).}
 \label{fig:flujo-adc}
 \end{figure}
@@ -1934,12 +1984,12 @@ if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
 
   if (salida_filtrada && filtros_listos) {
     buffer_out[index_buffer] = filtrar(buffer_in[index_buffer]);
+  } else {
+    buffer_out[index_buffer] = buffer_in[index_buffer];      /* bypass */
   }
-  q15_t salida = salida_filtrada ? buffer_out[index_buffer]
-                                 : buffer_in[index_buffer];
 
   /* Q15 -> 12 bits para el DAC */
-  int32_t out_dac = ((int32_t)salida / 16) + ADC_MID;
+  int32_t out_dac = ((int32_t)buffer_out[index_buffer] / 16) + ADC_MID;
   if (out_dac < 0)    out_dac = 0;
   if (out_dac > 4095) out_dac = 4095;
   DAC_SetData(DAC0, (uint16_t)out_dac);
@@ -2167,8 +2217,9 @@ ADC.}{fig:osc-tiempo}
                          \texttt{buffer\_out}: \texttt{arm\_fir\_q15()} con
                          \texttt{BLOCK\_SIZE = 1} y el camino multitasa
                        & Tabla~\ref{tab:respuesta} & \completar{}\\
-\ref{req:tecla-filtro} & El touchpad E1 (TSI0) alterna entre la salida
-                         filtrada y la señal sin filtrar; SW2 elige el
+\ref{req:tecla-filtro} & El touchpad E1 (TSI0) alterna entre filtrar y
+                         hacer \emph{bypass} (copia de \texttt{buffer\_in} a
+                         \texttt{buffer\_out}); SW2 elige el
                          filtro (\texttt{filter\_counter} módulo 4) y el LED
                          lo indica con su parpadeo
                        & Demostración & \completar{}\\
@@ -2276,5 +2327,20 @@ repositorio, y los scripts de MATLAB (\archivo{disenar_multitasa.m} y
 \archivo{generar_filtros.m}, de la implementación previa) en
 \archivo{documentacion/TP2/src/}. El repositorio es
 \url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}.
+
+\subsection{Coeficientes de los filtros}\label{sec:coeficientes}
+
+El código~\ref{lst:coeficientes} reproduce
+\archivo{source/filtros_multitasa.h} tal como lo genera
+\archivo{disenar_multitasa.m}. Los coeficientes están en q15: el valor real
+es el entero dividido por $2^{15}$. \texttt{G\_PA}, \texttt{G\_EB},
+\texttt{PB\_<fs>} y \texttt{LPB\_<fs>} están en el orden invertido de
+CMSIS-DSP, con el cero de relleno al principio; \texttt{HD\_<fs>} está en
+orden natural y completado con ceros hasta un múltiplo de $M$. Como todos los
+filtros son simétricos, el orden invertido coincide con el natural salvo por
+la posición del cero de relleno. El comentario inicial del archivo resume la
+estructura y los resultados de la verificación de cada filtro.
+
+\codigo[basicstyle=\ttfamily\scriptsize, numbers=none, label={lst:coeficientes}]{../../TP2/source/filtros_multitasa.h}{Coeficientes de los filtros (\texttt{source/filtros\_multitasa.h}).}
 
 \end{document}
