@@ -60,14 +60,6 @@ extern "C" {
 #define GPIO0_INT_1_IRQN GPIO01_IRQn
 /* GPIO0 interrupt handler identifier. */
 #define GPIO0_INT_1_IRQHANDLER GPIO01_IRQHandler
-/* Alias for GPIO1 peripheral */
-#define GPIO1_GPIO GPIO1
-/* Alias for PORT1 */
-#define GPIO1_PORT PORT1
-/* GPIO1 interrupt vector ID (number). */
-#define GPIO1_INT_0_IRQN GPIO10_IRQn
-/* GPIO1 interrupt handler identifier. */
-#define GPIO1_INT_0_IRQHANDLER GPIO10_IRQHandler
 
 /***********************************************************************************************************************
  * Global variables

@@ -73,7 +73,6 @@ instance:
       - 0: []
       - 1: []
       - 2: []
-      - 3: []
     - interrupts: []
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */
@@ -388,51 +387,6 @@ static void GPIO0_init(void) {
 }
 
 /***********************************************************************************************************************
- * GPIO1 initialization code
- **********************************************************************************************************************/
-/* clang-format off */
-/* TEXT BELOW IS USED AS SETTING FOR TOOLS *************************************
-instance:
-- name: 'GPIO1'
-- type: 'gpio'
-- mode: 'GPIO'
-- custom_name_enabled: 'true'
-- type_id: 'gpio_2.7.0'
-- functional_group: 'BOARD_InitPeripherals'
-- peripheral: 'GPIO1'
-- config_sets:
-  - fsl_gpio:
-    - enable_irq: 'true'
-    - port_interrupt:
-      - IRQn: 'GPIO10_IRQn'
-      - enable_interrrupt: 'enabled'
-      - enable_priority: 'false'
-      - priority: '0'
-      - enable_custom_name: 'false'
-    - enable_irq_1: 'false'
-    - gpio_interrupt_1:
-      - IRQn: 'GPIO01_IRQn'
-      - enable_interrrupt: 'enabled'
-      - enable_priority: 'false'
-      - priority: '1'
-      - enable_custom_name: 'false'
-    - enable_irq_EFT: 'false'
-    - port_interrupt_EFT:
-      - IRQn: 'noInt'
-      - enable_interrrupt: 'enabled'
-      - enable_priority: 'false'
-      - priority: '2'
-      - enable_custom_name: 'false'
- * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
-/* clang-format on */
-
-static void GPIO1_init(void) {
-  /* Make sure, the clock gate for port 1 is enabled (e. g. in pin_mux.c) */
-  /* Enable interrupt GPIO1_INT_0_IRQN request in the NVIC */
-  EnableIRQ(GPIO1_INT_0_IRQN);
-}
-
-/***********************************************************************************************************************
  * Initialization functions
  **********************************************************************************************************************/
 void BOARD_InitPeripherals(void)
@@ -442,7 +396,6 @@ void BOARD_InitPeripherals(void)
   ADC0_init();
   DAC0_init();
   GPIO0_init();
-  GPIO1_init();
 }
 
 /***********************************************************************************************************************

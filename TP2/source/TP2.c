@@ -78,9 +78,6 @@
 #ifndef GPIO0_INT_1_IRQHANDLER
 #define GPIO0_INT_1_IRQHANDLER GPIO01_IRQHandler
 #endif
-#ifndef GPIO1_INT_0_IRQHANDLER
-#define GPIO1_INT_0_IRQHANDLER GPIO10_IRQHandler
-#endif
 
 #define BUFFER_SIZE 512
 #define BLOCK_SIZE  1        /* procesamiento por muestras */
@@ -532,19 +529,6 @@ void GPIO0_INT_1_IRQHANDLER(void) {
   #endif
 }
 
-/* GPIO10_IRQn: P1_23 ya no se usa (la habilitacion del filtro paso al
- * touchpad). main() deshabilita la interrupcion; el handler solo limpia la
- * bandera por si llega a dispararse antes, mientras siga configurada en
- * Config Tools. */
-void GPIO1_INT_0_IRQHANDLER(void) {
-  uint32_t pin_flags = GPIO_GpioGetInterruptChannelFlags(GPIO1, 0U);
-
-  GPIO_GpioClearInterruptChannelFlags(GPIO1, pin_flags, 0U);
-  #if defined __CORTEX_M && (__CORTEX_M == 4U)
-    __DSB();
-  #endif
-}
-
 /* ADC0_IRQn interrupt handler: una muestra por interrupcion */
 void ADC0_IRQHANDLER(void) {
 #if MEDIR_TIEMPO_ISR
@@ -606,9 +590,6 @@ int main(void) {
     init_dac();                     /* antes de que arranque el ADC */
     init_pin_medicion();
     BOARD_InitBootPeripherals();
-#ifdef GPIO1_INT_0_IRQN
-    DisableIRQ(GPIO1_INT_0_IRQN);   /* P1_23 ya no se usa (ver su handler) */
-#endif
 #ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
     /* Init FSL debug console. */
     BOARD_InitDebugConsole();

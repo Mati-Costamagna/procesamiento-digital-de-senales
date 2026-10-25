@@ -1547,10 +1547,9 @@ cada \qty{200}{\milli\second}, lo que permite ajustarlo con la placa.
 \texttt{TOQUE\_DELTA} si hace falta.}
 
 El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no está
-asignado en Config Tools. La instancia GPIO1 de la herramienta Peripherals
-todavía habilita la interrupción \texttt{GPIO10\_IRQn}, que era la de ese
-pin, así que \texttt{main()} la deshabilita después de inicializar los
-periféricos, y su rutina sólo limpia la bandera.
+asignado en Config Tools, y la instancia GPIO1 de la herramienta Peripherals,
+que sólo habilitaba su interrupción (\texttt{GPIO10\_IRQn}), está
+deshabilitada. El firmware ya no tiene rutina para esa interrupción.
 
 \captura{img/pins-tsi-tp2.png}{Config Tools \textemdash{} Pins}{\pin{P1\_3}
 asignado a \texttt{TSI0\_CH3} (touchpad E1), con el buffer de entrada
@@ -2016,8 +2015,7 @@ continuación inicializa las instancias de filtro, activa
 inicial, configura el SysTick para interrumpir cada \qty{1}{\milli\second},
 inicializa el touchpad (\texttt{init\_touch()}, que mide la base) y entra en
 el lazo principal, que lee el touchpad y actualiza el LED
-(figura~\ref{fig:flujo-lazo}). También deshabilita la interrupción de
-\pin{P1\_23}, que ya no se usa.
+(figura~\ref{fig:flujo-lazo}).
 
 \subsection{Inicialización de los filtros}
 
