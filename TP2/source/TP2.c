@@ -12,9 +12,11 @@
   * Boton GPIO0 INT0: cambia la frecuencia de muestreo (8k, 16k, 22k, 44k, 48k).
  *                   El color del LED indica la fs (igual que en el Lab #1).
  * Boton GPIO0 INT1: recorre PB -> PA -> PBanda -> EB -> PB ...
- * Pin   GPIO1 INT0: (P1_23, J1-8) alterna lo que va al DAC: buffer de salida
- *                   (filtrado) o muestra tomada del ADC (sin filtrar).
- *                   El filtro solo se calcula con la salida filtrada.
+ * Touchpad E1:      (TSI0 canal 3, P1_3) cada toque alterna lo que va al DAC:
+ *                   buffer de salida (filtrado) o muestra del ADC (sin
+ *                   filtrar). El filtro solo se calcula con la salida filtrada.
+ * LED:              color = fs. Con la salida filtrada parpadea a 1, 2, 4 u
+ *                   8 Hz (PB, PA, PBanda, EB); sin filtrar queda fijo.
  * P0_26 (J2[10]):   pin de medicion. Esta en 1 mientras se ejecuta la rutina
  *                   del ADC; con el osciloscopio se mide la duracion del pulso.
  *
@@ -36,6 +38,7 @@
 #include "fsl_dac.h"
 #include "fsl_gpio.h"
 #include "fsl_port.h"
+#include "fsl_tsi_v6.h"
 #include "arm_math.h"
 
 #define VEL_0 	9374         /*  8 kHz */
@@ -50,11 +53,21 @@
 #define LED_BLUE_PIN  2U     /* P1_2  -> GPIO1 */
 #define SW2_PIN       23U    /* P0_23: tipo de filtro      -> GPIO0 INT1 */
 #define SW3_PIN       6U     /* P0_6 : cambia la fs        -> GPIO0 INT0 */
-#define SEL_PIN       23U    /* P1_23: filtrado / sin filtrar -> GPIO1 INT0 */
 
 /* Pin de medicion del tiempo de la ISR del ADC (libre en la placa) */
 #define MEDIR_TIEMPO_ISR 1     /* 0 = desactivado */
 #define PIN_MEDICION     26U   /* P0_26 -> J2[10] */
+
+/* Touchpad E1 de la placa: TSI0 canal 3 en P1_3 (BOARD_TSI_ELECTRODE_1 del
+ * ejemplo tsi_v6 del SDK). Se lee desde el lazo principal, sin interrupciones. */
+#define TSI_CANAL        3U
+#define TSI_PIN          3U     /* P1_3 */
+#define TOQUE_DELTA      20     /* cuentas debajo de la base que son un toque */
+#define TOQUE_LECTURAS   3U     /* lecturas seguidas para aceptar un cambio */
+#define PERIODO_TSI_MS   10U    /* un barrido del touchpad cada 10 ms */
+#define TIMEOUT_TSI_MS   50U    /* si un barrido no termina, se desactiva el TSI */
+#define LECTURAS_BASE    16U    /* barridos promediados para la base, sin tocar */
+#define DEPURAR_TOUCH    0      /* 1 = imprime la cuenta del TSI cada 200 ms */
 
 /* Si las Config Tools no generaron los nombres de los handlers, se usan
  * directamente los del vector de interrupciones. */
@@ -89,6 +102,25 @@ volatile int filter_counter = PB;  /* tipo de filtro: PB, PA, PBANDA, EB */
 volatile bool salida_filtrada = true; /* false: al DAC va la muestra del ADC */
 
 uint32_t sample_vel[NUM_FS_MUESTREO] = {VEL_0, VEL_1, VEL_2, VEL_3, VEL_4};
+
+/* LED: el color indica la fs; con la salida filtrada parpadea con un
+ * semiperiodo distinto para cada filtro, y sin filtrar queda fijo. */
+static const uint16_t semiperiodo_led_ms[NUM_TIPOS] = {
+	500,   /* PB:     1 Hz */
+	250,   /* PA:     2 Hz */
+	125,   /* PBanda: 4 Hz */
+	62     /* EB:     8 Hz */
+};
+
+static volatile uint32_t ms_ticks;    /* base de tiempo de 1 ms (SysTick) */
+
+/* Estado del touchpad (solo lo usa el lazo principal) */
+static bool     touch_ok;             /* false si el TSI no responde */
+static bool     touch_midiendo;       /* hay un barrido en curso */
+static bool     touch_tocado;         /* estado con antirrebote */
+static uint8_t  touch_cuenta;         /* lecturas seguidas en el estado opuesto */
+static int32_t  touch_base;           /* cuenta del TSI sin tocar */
+static uint32_t touch_t0;             /* inicio del ultimo barrido */
 
 /* Buffers de entrada (muestras del ADC) y de salida (van al DAC) */
 q15_t buffer_in[BUFFER_SIZE];
@@ -133,7 +165,7 @@ volatile bool filtros_listos = false;  /* hasta init_filtros() la salida es x */
 static void init_fir(arm_fir_instance_q15 *s, uint16_t taps, const q15_t *coef,
 		q15_t *estado, const char *nombre, uint32_t fs) {
 	if (arm_fir_init_q15(s, taps, coef, estado, BLOCK_SIZE) != ARM_MATH_SUCCESS) {
-		PRINTF("Error inicializando %s a %u Hz\r\n", nombre, fs);
+		PRINTF("Error inicializando %s a %u Hz\r\n", nombre, (unsigned)fs);
 	}
 }
 
@@ -323,14 +355,169 @@ void set_state(int state_number){
 		}
 }
 
+static void led_apagar(void) {
+	GPIO_PinWrite(GPIO0, LED_RED_PIN, 1);
+	GPIO_PinWrite(GPIO0, LED_GREEN_PIN, 1);
+	GPIO_PinWrite(GPIO1, LED_BLUE_PIN, 1);
+}
+
+/* Lazo principal: el color indica la fs (set_state) y el parpadeo, el
+ * filtro. Con la salida sin filtrar el LED queda fijo. Solo el lazo
+ * principal escribe el LED. */
+static void led_actualizar(uint32_t ahora) {
+	static bool     parpadeando = false;
+	static bool     encendido   = true;
+	static uint32_t t_cambio    = 0;
+	static int      mostrado    = -2;   /* lo que hay en el LED: fs, o -1 apagado */
+
+	bool parpadear = salida_filtrada && filtros_listos;
+	if (parpadear != parpadeando) {      /* empieza o termina el parpadeo */
+		parpadeando = parpadear;
+		encendido   = true;
+		t_cambio    = ahora;
+	} else if (parpadear && (ahora - t_cambio >= semiperiodo_led_ms[filter_counter])) {
+		encendido = !encendido;
+		t_cambio  = ahora;
+	}
+
+	int estado = encendido ? state_counter : -1;
+	if (estado != mostrado) {
+		if (encendido) {
+			set_state(state_counter);
+		} else {
+			led_apagar();
+		}
+		mostrado = estado;
+	}
+}
+
+/* Base de tiempo de 1 ms para el touchpad y el LED (prioridad minima, asi
+ * que nunca demora a la rutina del ADC). */
+void SysTick_Handler(void) {
+	ms_ticks++;
+}
+
+/* Un barrido del touchpad con espera activa (solo para medir la base). */
+static bool tsi_barrido_bloqueante(uint16_t *cuenta) {
+	uint32_t t0 = ms_ticks;
+	TSI_ClearStatusFlags(TSI0, kTSI_EndOfScanFlag);
+	TSI_StartSoftwareTrigger(TSI0);
+	while (!(TSI_GetStatusFlags(TSI0) & kTSI_EndOfScanFlag)) {
+		if (ms_ticks - t0 > TIMEOUT_TSI_MS) {
+			return false;
+		}
+	}
+	*cuenta = TSI_GetCounter(TSI0);
+	TSI_ClearStatusFlags(TSI0, kTSI_EndOfScanFlag);
+	return true;
+}
+
+/* TSI0 en modo self-cap sobre el electrodo E1, con disparo por software. La
+ * base se mide al arrancar: no hay que tocar el touchpad durante el reset. */
+static void init_touch(void) {
+	const port_pin_config_t pin_tsi = {
+		.mux         = kPORT_MuxAlt0,             /* TSI0_CH3 */
+		.inputBuffer = kPORT_InputBufferDisable,  /* funcion analogica */
+	};
+	tsi_selfCap_config_t cfg;
+	uint32_t suma = 0;
+	uint16_t cuenta;
+
+	CLOCK_EnableClock(kCLOCK_Port1);
+	PORT_SetPinConfig(PORT1, TSI_PIN, &pin_tsi);
+	CLOCK_SetClkDiv(kCLOCK_DivTsiClk, 1U);
+	CLOCK_AttachClk(kFRO12M_to_TSI);      /* clk_in (cristal) no esta habilitado */
+
+	TSI_GetSelfCapModeDefaultConfig(&cfg);
+	TSI_InitSelfCapMode(TSI0, &cfg);
+	TSI_EnableNoiseCancellation(TSI0, false);
+	TSI_EnableHardwareTriggerScan(TSI0, false);
+	TSI_DisableInterrupts(TSI0, kTSI_GlobalInterruptEnable | kTSI_EndOfScanInterruptEnable);
+	TSI_SetSelfCapMeasuredChannel(TSI0, TSI_CANAL);
+	TSI_EnableModule(TSI0, true);
+
+	for (uint32_t i = 0; i < LECTURAS_BASE; i++) {
+		if (!tsi_barrido_bloqueante(&cuenta)) {
+			PRINTF("Touchpad: el TSI no responde, queda desactivado\r\n");
+			return;
+		}
+		suma += cuenta;
+	}
+	touch_base = (int32_t)(suma / LECTURAS_BASE);
+	touch_t0   = ms_ticks;
+	touch_ok   = true;
+	PRINTF("Touchpad: base de %d cuentas\r\n", (int)touch_base);
+}
+
+/* Antirrebote con histeresis. Devuelve true solo en el instante en que se
+ * confirma un toque nuevo (el paso de "sin tocar" a "tocado"). */
+static bool touch_nuevo_toque(uint16_t cuenta) {
+	int32_t umbral = touch_tocado ? touch_base - TOQUE_DELTA / 2   /* para soltar */
+	                              : touch_base - TOQUE_DELTA;      /* para tocar */
+	bool lectura = (int32_t)cuenta < umbral;
+
+	if (lectura == touch_tocado) {
+		touch_cuenta = 0;
+		return false;
+	}
+	if (++touch_cuenta < TOQUE_LECTURAS) {
+		return false;
+	}
+	touch_cuenta = 0;
+	touch_tocado = lectura;
+	return touch_tocado;
+}
+
+/* Lazo principal: un barrido cada PERIODO_TSI_MS, sin esperas. Cada toque
+ * nuevo alterna entre la salida filtrada y la senal sin filtrar. */
+static void touch_actualizar(uint32_t ahora) {
+	if (!touch_ok) {
+		return;
+	}
+	if (!touch_midiendo) {
+		if (ahora - touch_t0 >= PERIODO_TSI_MS) {
+			TSI_ClearStatusFlags(TSI0, kTSI_EndOfScanFlag);
+			TSI_StartSoftwareTrigger(TSI0);
+			touch_midiendo = true;
+			touch_t0 = ahora;
+		}
+		return;
+	}
+	if (!(TSI_GetStatusFlags(TSI0) & kTSI_EndOfScanFlag)) {
+		if (ahora - touch_t0 > TIMEOUT_TSI_MS) {
+			touch_ok = false;
+			PRINTF("Touchpad: el TSI no responde, queda desactivado\r\n");
+		}
+		return;
+	}
+	uint16_t cuenta = TSI_GetCounter(TSI0);
+	TSI_ClearStatusFlags(TSI0, kTSI_EndOfScanFlag);
+	touch_midiendo = false;
+
+#if DEPURAR_TOUCH
+	static uint32_t t_impresion;
+	if (ahora - t_impresion >= 200U) {
+		t_impresion = ahora;
+		PRINTF("TSI: %u (base %d)\r\n", (unsigned)cuenta, (int)touch_base);
+	}
+#endif
+
+	if (touch_nuevo_toque(cuenta)) {
+		if (!salida_filtrada) {
+			cambio_filtro = true;       /* el filtro arranca sin historia vieja */
+		}
+		salida_filtrada = !salida_filtrada;
+	}
+}
+
 /* GPIO00_IRQn interrupt handler: cambia la frecuencia de muestreo */
 void GPIO0_INT_0_IRQHANDLER(void) {
   uint32_t pin_flags0 = GPIO_GpioGetInterruptChannelFlags(GPIO0, 0U);
 
   state_counter = (state_counter + 1) % NUM_FS_MUESTREO;
   setup_new_match(sample_vel[state_counter]);
-  set_state(state_counter);
   cambio_filtro = true;          /* hay que usar los coeficientes de la nueva fs */
+                                 /* el color del LED lo cambia el lazo principal */
 
   GPIO_GpioClearInterruptChannelFlags(GPIO0, pin_flags0, 0U);
   #if defined __CORTEX_M && (__CORTEX_M == 4U)
@@ -351,11 +538,12 @@ void GPIO0_INT_1_IRQHANDLER(void) {
   #endif
 }
 
-/* GPIO10_IRQn interrupt handler: salida filtrada / sin filtrar */
+/* GPIO10_IRQn: P1_23 ya no se usa (la habilitacion del filtro paso al
+ * touchpad). main() deshabilita la interrupcion; el handler solo limpia la
+ * bandera por si llega a dispararse antes, mientras siga configurada en
+ * Config Tools. */
 void GPIO1_INT_0_IRQHANDLER(void) {
   uint32_t pin_flags = GPIO_GpioGetInterruptChannelFlags(GPIO1, 0U);
-
-  salida_filtrada = !salida_filtrada;
 
   GPIO_GpioClearInterruptChannelFlags(GPIO1, pin_flags, 0U);
   #if defined __CORTEX_M && (__CORTEX_M == 4U)
@@ -386,7 +574,7 @@ void ADC0_IRQHANDLER(void) {
     /* ADC de 16 bits (kLPADC_ConversionResolutionHigh): 0..65535 -> Q15 centrado en 0 */
     buffer_in[index_buffer] = (q15_t)((int32_t)result.convValue - 32768);
 
-    /* El pin de GPIO1 elige que va al DAC; el filtro solo corre si es la
+    /* El touchpad elige que va al DAC; el filtro solo corre si es la
      * salida filtrada (y despues de init_filtros()) */
     if (salida_filtrada && filtros_listos) {
       buffer_out[index_buffer] = filtrar(buffer_in[index_buffer]);
@@ -422,19 +610,26 @@ int main(void) {
     init_dac();                     /* antes de que arranque el ADC */
     init_pin_medicion();
     BOARD_InitBootPeripherals();
+#ifdef GPIO1_INT_0_IRQN
+    DisableIRQ(GPIO1_INT_0_IRQN);   /* P1_23 ya no se usa (ver su handler) */
+#endif
 #ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
     /* Init FSL debug console. */
     BOARD_InitDebugConsole();
 #endif
 
     init_filtros();
-    set_state(state_counter);
     cambio_filtro = true;
 
+    SysTick_Config(SystemCoreClock / 1000U);   /* base de tiempo de 1 ms */
     PRINTF("TP2 - FIR por muestras\r\n");
+    init_touch();
 
+    /* Lazo principal: touchpad y LED. Lo interrumpe la rutina del ADC. */
     while (1) {
-        __asm volatile ("nop");
+        uint32_t ahora = ms_ticks;
+        touch_actualizar(ahora);
+        led_actualizar(ahora);
     }
     return 0 ;
 }
