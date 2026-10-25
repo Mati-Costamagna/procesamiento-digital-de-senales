@@ -12,9 +12,10 @@
   * Boton GPIO0 INT0: cambia la frecuencia de muestreo (8k, 16k, 22k, 44k, 48k).
  *                   El color del LED indica la fs (igual que en el Lab #1).
  * Boton GPIO0 INT1: recorre PB -> PA -> PBanda -> EB -> PB ...
- * Touchpad E1:      (TSI0 canal 3, P1_3) cada toque alterna lo que va al DAC:
- *                   buffer de salida (filtrado) o muestra del ADC (sin
- *                   filtrar). El filtro solo se calcula con la salida filtrada.
+ * Touchpad E1:      (TSI0 canal 3, P1_3) cada toque alterna entre filtrar y
+ *                   hacer bypass (copiar la muestra del ADC al buffer de
+ *                   salida, sin calcular el filtro). El DAC lee siempre del
+ *                   buffer de salida.
  * LED:              color = fs. Con la salida filtrada parpadea a 1, 2, 4 u
  *                   8 Hz (PB, PA, PBanda, EB); sin filtrar queda fijo.
  * P0_26 (J2[10]):   pin de medicion. Esta en 1 mientras se ejecuta la rutina
@@ -574,15 +575,17 @@ void ADC0_IRQHANDLER(void) {
     /* ADC de 16 bits (kLPADC_ConversionResolutionHigh): 0..65535 -> Q15 centrado en 0 */
     buffer_in[index_buffer] = (q15_t)((int32_t)result.convValue - 32768);
 
-    /* El touchpad elige que va al DAC; el filtro solo corre si es la
-     * salida filtrada (y despues de init_filtros()) */
+    /* El touchpad elige si se filtra (solo despues de init_filtros()). En
+     * bypass la muestra se copia al buffer de salida: el DAC lee siempre de
+     * ese buffer, como pide la consigna. */
     if (salida_filtrada && filtros_listos) {
       buffer_out[index_buffer] = filtrar(buffer_in[index_buffer]);
+    } else {
+      buffer_out[index_buffer] = buffer_in[index_buffer];      /* bypass */
     }
-    q15_t salida = salida_filtrada ? buffer_out[index_buffer] : buffer_in[index_buffer];
 
     /* Q15 -> 12 bits para el DAC */
-    int32_t out_dac = ((int32_t)salida / 16) + ADC_MID;
+    int32_t out_dac = ((int32_t)buffer_out[index_buffer] / 16) + ADC_MID;
     if (out_dac < 0)    out_dac = 0;
     if (out_dac > 4095) out_dac = 4095;
     DAC_SetData(DAC0, (uint16_t)out_dac);
