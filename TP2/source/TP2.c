@@ -60,9 +60,9 @@
 #define PIN_MEDICION     26U   /* P0_26 -> J2[10] */
 
 /* Touchpad E1 de la placa: TSI0 canal 3 en P1_3 (BOARD_TSI_ELECTRODE_1 del
- * ejemplo tsi_v6 del SDK). Se lee desde el lazo principal, sin interrupciones. */
+ * ejemplo tsi_v6 del SDK). Pin y reloj en Config Tools; se lee desde el lazo
+ * principal, sin interrupciones. */
 #define TSI_CANAL        3U
-#define TSI_PIN          3U     /* P1_3 */
 #define TOQUE_DELTA      20     /* cuentas debajo de la base que son un toque */
 #define TOQUE_LECTURAS   3U     /* lecturas seguidas para aceptar un cambio */
 #define PERIODO_TSI_MS   10U    /* un barrido del touchpad cada 10 ms */
@@ -413,21 +413,14 @@ static bool tsi_barrido_bloqueante(uint16_t *cuenta) {
 	return true;
 }
 
-/* TSI0 en modo self-cap sobre el electrodo E1, con disparo por software. La
- * base se mide al arrancar: no hay que tocar el touchpad durante el reset. */
+/* TSI0 en modo self-cap sobre el electrodo E1, con disparo por software. El
+ * pin (P1_3 como TSI0_CH3) y el reloj (FRO 12 MHz) los configura Config Tools
+ * en BOARD_InitBootPins() y BOARD_InitBootClocks(). La base se mide al
+ * arrancar: no hay que tocar el touchpad durante el reset. */
 static void init_touch(void) {
-	const port_pin_config_t pin_tsi = {
-		.mux         = kPORT_MuxAlt0,             /* TSI0_CH3 */
-		.inputBuffer = kPORT_InputBufferDisable,  /* funcion analogica */
-	};
 	tsi_selfCap_config_t cfg;
 	uint32_t suma = 0;
 	uint16_t cuenta;
-
-	CLOCK_EnableClock(kCLOCK_Port1);
-	PORT_SetPinConfig(PORT1, TSI_PIN, &pin_tsi);
-	CLOCK_SetClkDiv(kCLOCK_DivTsiClk, 1U);
-	CLOCK_AttachClk(kFRO12M_to_TSI);      /* clk_in (cristal) no esta habilitado */
 
 	TSI_GetSelfCapModeDefaultConfig(&cfg);
 	TSI_InitSelfCapMode(TSI0, &cfg);

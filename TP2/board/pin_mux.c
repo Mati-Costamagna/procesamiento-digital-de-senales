@@ -627,8 +627,6 @@ BOARD_InitBUTTONsPins:
   - {pin_num: B7, peripheral: GPIO0, signal: 'GPIO, 23', pin_signal: PIO0_23/WUU0_IN5/EWM0_OUT_b/FC1_P3/CT_INP3/FLEXIO0_D7/ADC0_A15/CMP2_IN2, direction: INPUT, gpio_per_interrupt_sel: output1,
     gpio_per_interrupt: kGPIO_InterruptFallingEdge, slew_rate: fast, open_drain: disable, drive_strength: low, pull_select: up, pull_enable: enable, input_buffer: enable,
     invert_input: normal}
-  - {pin_num: M4, peripheral: GPIO1, signal: 'GPIO, 23', pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, direction: INPUT, gpio_per_interrupt: kGPIO_InterruptFallingEdge,
-    pull_select: up, pull_enable: enable}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -643,12 +641,8 @@ void BOARD_InitBUTTONsPins(void)
 {
     /* Enables the clock for GPIO0: Enables clock */
     CLOCK_EnableClock(kCLOCK_Gpio0);
-    /* Enables the clock for GPIO1: Enables clock */
-    CLOCK_EnableClock(kCLOCK_Gpio1);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
-    /* Enables the clock for PORT1: Enables clock */
-    CLOCK_EnableClock(kCLOCK_Port1);
 
     gpio_pin_config_t SW3_config = {
         .pinDirection = kGPIO_DigitalInput,
@@ -664,13 +658,6 @@ void BOARD_InitBUTTONsPins(void)
     /* Initialize GPIO functionality on pin PIO0_23 (pin B7)  */
     GPIO_PinInit(BOARD_INITBUTTONSPINS_SW2_GPIO, BOARD_INITBUTTONSPINS_SW2_PIN, &SW2_config);
 
-    gpio_pin_config_t SEL_config = {
-        .pinDirection = kGPIO_DigitalInput,
-        .outputLogic = 0U
-    };
-    /* Initialize GPIO functionality on pin PIO1_23 (pin M4)  */
-    GPIO_PinInit(BOARD_INITBUTTONSPINS_SEL_GPIO, BOARD_INITBUTTONSPINS_SEL_PIN, &SEL_config);
-
     GPIO0->ICR[23] = ((GPIO0->ICR[23] &
                        /* Mask bits to zero which are setting */
                        (~(GPIO_ICR_IRQS_MASK | GPIO_ICR_ISF_MASK)))
@@ -683,9 +670,6 @@ void BOARD_InitBUTTONsPins(void)
 
     /* Interrupt configuration on GPIO0_6 (pin C14): Interrupt on falling edge */
     GPIO_SetPinInterruptConfig(BOARD_INITBUTTONSPINS_SW3_GPIO, BOARD_INITBUTTONSPINS_SW3_PIN, kGPIO_InterruptFallingEdge);
-
-    /* Interrupt configuration on GPIO1_23 (pin M4): Interrupt on falling edge */
-    GPIO_SetPinInterruptConfig(BOARD_INITBUTTONSPINS_SEL_GPIO, BOARD_INITBUTTONSPINS_SEL_PIN, kGPIO_InterruptFallingEdge);
 
     const port_pin_config_t SW2 = {/* Internal pull-up resistor is enabled */
                                    .pullSelect = kPORT_PullUp,
@@ -732,22 +716,6 @@ void BOARD_InitBUTTONsPins(void)
                                    .lockRegister = kPORT_UnlockRegister};
     /* PORT0_6 (pin C14) is configured as PIO0_6 */
     PORT_SetPinConfig(BOARD_INITBUTTONSPINS_SW3_PORT, BOARD_INITBUTTONSPINS_SW3_PIN, &SW3);
-
-    /* PORT1_23 (pin M4) is configured as PIO1_23 */
-    PORT_SetPinMux(BOARD_INITBUTTONSPINS_SEL_PORT, BOARD_INITBUTTONSPINS_SEL_PIN, kPORT_MuxAlt0);
-
-    PORT1->PCR[23] = ((PORT1->PCR[23] &
-                       /* Mask bits to zero which are setting */
-                       (~(PORT_PCR_PS_MASK | PORT_PCR_PE_MASK | PORT_PCR_IBE_MASK)))
-
-                      /* Pull Select: Enables internal pullup resistor. */
-                      | PORT_PCR_PS(PCR_PS_ps1)
-
-                      /* Pull Enable: Enables. */
-                      | PORT_PCR_PE(PCR_PE_pe1)
-
-                      /* Input Buffer Enable: Enables. */
-                      | PORT_PCR_IBE(PCR_IBE_ibe1));
 }
 
 /* clang-format off */
@@ -760,6 +728,7 @@ BOARD_InitPERIPHERALsPins:
   - {pin_num: P3, peripheral: ADC0, signal: 'A, 0', pin_signal: ADC0_A0}
   - {peripheral: ADC0, signal: 'TRG_CH, 0', pin_signal: CTIMER0_MATCH3}
   - {pin_num: T1, peripheral: DAC0, signal: OUT, pin_signal: PIO4_2/TRIG_IN6/FC2_P2/CT_INP12/SMARTDMA_PIO26/PLU_IN2/SINC0_MBIT3/DAC0_OUT/ADC0_A4/ADC1_A4/CMP0_IN4N/CMP1_IN4N/CMP2_IN4N}
+  - {pin_num: B4, peripheral: TSI0, signal: 'CH, 3', pin_signal: PIO1_3/WUU0_IN7/TRIG_OUT1/FC3_P3/CT1_MAT1/SCT0_IN7/FLEXIO0_D11/ENET0_MDIO/SAI1_RXD0/CAN0_RXD/TSI0_CH3/ADC0_A19/CMP0_IN1}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -776,6 +745,8 @@ void BOARD_InitPERIPHERALsPins(void)
     CLOCK_EnableClock(kCLOCK_InputMux0);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
+    /* Enables the clock for PORT1: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port1);
     /* Enables the clock for PORT4: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port4);
     /* Timer CTIMER0 Match 3 is selected as trigger input for ADC0 channel 0 */
@@ -790,6 +761,16 @@ void BOARD_InitPERIPHERALsPins(void)
 
                       /* Input Buffer Enable: Enables. */
                       | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT1_3 (pin B4) is configured as TSI0_CH3 */
+    PORT_SetPinMux(PORT1, 3U, kPORT_MuxAlt0);
+
+    PORT1->PCR[3] = ((PORT1->PCR[3] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Disables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe0));
 
     /* PORT4_2 (pin T1) is configured as DAC0_OUT */
     PORT_SetPinMux(PORT4, 2U, kPORT_MuxAlt0);

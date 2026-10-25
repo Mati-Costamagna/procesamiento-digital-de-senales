@@ -134,9 +134,6 @@ void BOARD_InitSWD_DEBUGPins(void);
 void BOARD_InitLEDsPins(void);
 
 #define ICR_IRQS_irqs1 0x01u /*!<@brief Interrupt Select: Interrupt, trigger output, or DMA request 1 */
-#define PCR_IBE_ibe1 0x01u   /*!<@brief Input Buffer Enable: Enables */
-#define PCR_PE_pe1 0x01u     /*!<@brief Pull Enable: Enables */
-#define PCR_PS_ps1 0x01u     /*!<@brief Pull Select: Enables internal pullup resistor */
 
 /*! @name PORT0_6 (coord C14), P0_6/J23[7]/SW3[3]/SW3[4]
   @{ */
@@ -164,20 +161,6 @@ void BOARD_InitLEDsPins(void);
 #define BOARD_INITBUTTONSPINS_SW2_PORT PORT0                /*!<@brief PORT peripheral base pointer */
 #define BOARD_INITBUTTONSPINS_SW2_PIN 23U                   /*!<@brief PORT pin number */
 #define BOARD_INITBUTTONSPINS_SW2_PIN_MASK (1U << 23U)      /*!<@brief PORT pin mask */
-                                                            /* @} */
-
-/*! @name PORT1_23 (coord M4), P1_23/J9[23]/SJ1[1]
-  @{ */
-
-/* Symbols to be used with GPIO driver */
-#define BOARD_INITBUTTONSPINS_SEL_GPIO GPIO1                /*!<@brief GPIO peripheral base pointer */
-#define BOARD_INITBUTTONSPINS_SEL_GPIO_PIN 23U              /*!<@brief GPIO pin number */
-#define BOARD_INITBUTTONSPINS_SEL_GPIO_PIN_MASK (1U << 23U) /*!<@brief GPIO pin mask */
-
-/* Symbols to be used with PORT driver */
-#define BOARD_INITBUTTONSPINS_SEL_PORT PORT1                /*!<@brief PORT peripheral base pointer */
-#define BOARD_INITBUTTONSPINS_SEL_PIN 23U                   /*!<@brief PORT pin number */
-#define BOARD_INITBUTTONSPINS_SEL_PIN_MASK (1U << 23U)      /*!<@brief PORT pin mask */
                                                             /* @} */
 
 /*!

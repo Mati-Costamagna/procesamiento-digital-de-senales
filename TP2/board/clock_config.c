@@ -285,6 +285,7 @@ outputs:
 - {id: PLL0_CLK_clock.outFreq, value: 150 MHz}
 - {id: Slow_clock.outFreq, value: 37.5 MHz}
 - {id: System_clock.outFreq, value: 150 MHz}
+- {id: TSI_clock.outFreq, value: 12 MHz}
 - {id: gdet_clock.outFreq, value: 48 MHz}
 - {id: trng_clock.outFreq, value: 48 MHz}
 settings:
@@ -306,6 +307,8 @@ settings:
 - {id: SYSCON.FLEXSPICLKSEL.sel, value: NO_CLOCK}
 - {id: SYSCON.FREQMEREFCLKSEL.sel, value: SYSCON.evtg_out0a}
 - {id: SYSCON.FREQMETARGETCLKSEL.sel, value: SYSCON.evtg_out0a}
+- {id: SYSCON.TSICLKSEL.sel, value: SCG.FRO_12M}
+- {id: TSICLKDIV, value: Enable}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS **********/
 /* clang-format on */
 
@@ -362,6 +365,7 @@ void BOARD_BootClockPLL150M(void)
     CLOCK_AttachClk(kFRO_HF_to_DAC0);                 /*!< Switch DAC0 to FRO_HF */
     CLOCK_AttachClk(kPLL0_to_CTIMER0);                 /*!< Switch CTIMER0 to PLL0 */
     CLOCK_AttachClk(kFRO12M_to_FLEXCOMM4);                 /*!< Switch FLEXCOMM4 to FRO12M */
+    CLOCK_AttachClk(kFRO12M_to_TSI);                 /*!< Switch TSI to FRO12M */
 
     /*!< Set up dividers */
     CLOCK_SetClkDiv(kCLOCK_DivAhbClk, 1U);           /*!< Set AHBCLKDIV divider to value 1 */
@@ -369,6 +373,7 @@ void BOARD_BootClockPLL150M(void)
     CLOCK_SetClkDiv(kCLOCK_DivDac0Clk, 1U);           /*!< Set DAC0CLKDIV divider to value 1 */
     CLOCK_SetClkDiv(kCLOCK_DivCtimer0Clk, 1U);           /*!< Set CTIMER0CLKDIV divider to value 1 */
     CLOCK_SetClkDiv(kCLOCK_DivFlexcom4Clk, 1U);           /*!< Set FLEXCOMM4CLKDIV divider to value 1 */
+    CLOCK_SetClkDiv(kCLOCK_DivTsiClk, 1U);           /*!< Set TSICLKDIV divider to value 1 */
 
     /* Set SystemCoreClock variable */
     SystemCoreClock = BOARD_BOOTCLOCKPLL150M_CORE_CLOCK;

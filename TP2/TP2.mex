@@ -503,11 +503,6 @@
                         <data>true</data>
                      </feature>
                   </dependency>
-                  <dependency resourceType="Peripheral" resourceId="GPIO1" description="Peripheral GPIO1 signals are routed in the Pins Tool, but the peripheral is not initialized in the Peripherals Tool." problem_level="1" source="Pins:BOARD_InitBUTTONsPins">
-                     <feature name="initialized" evaluation="equal">
-                        <data>true</data>
-                     </feature>
-                  </dependency>
                   <dependency resourceType="SWComponent" resourceId="platform.drivers.common" description="Pins initialization requires the COMMON Driver in the project." problem_level="2" source="Pins:BOARD_InitBUTTONsPins">
                      <feature name="enabled" evaluation="equal" configuration="cm33_core0">
                         <data>true</data>
@@ -552,14 +547,6 @@
                         <pin_feature name="invert_input" value="normal"/>
                      </pin_features>
                   </pin>
-                  <pin peripheral="GPIO1" signal="GPIO, 23" pin_num="M4" pin_signal="PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23">
-                     <pin_features>
-                        <pin_feature name="direction" value="INPUT"/>
-                        <pin_feature name="gpio_per_interrupt" value="kGPIO_InterruptFallingEdge"/>
-                        <pin_feature name="pull_select" value="up"/>
-                        <pin_feature name="pull_enable" value="enable"/>
-                     </pin_features>
-                  </pin>
                </pins>
             </function>
             <function name="BOARD_InitPERIPHERALsPins">
@@ -585,6 +572,11 @@
                         <data>true</data>
                      </feature>
                   </dependency>
+                  <dependency resourceType="Peripheral" resourceId="TSI0" description="Peripheral TSI0 signals are routed in the Pins Tool, but the peripheral is not initialized in the Peripherals Tool." problem_level="1" source="Pins:BOARD_InitPERIPHERALsPins">
+                     <feature name="initialized" evaluation="equal">
+                        <data>true</data>
+                     </feature>
+                  </dependency>
                   <dependency resourceType="SWComponent" resourceId="platform.drivers.common" description="Pins initialization requires the COMMON Driver in the project." problem_level="2" source="Pins:BOARD_InitPERIPHERALsPins">
                      <feature name="enabled" evaluation="equal" configuration="cm33_core0">
                         <data>true</data>
@@ -606,6 +598,7 @@
                   <pin peripheral="ADC0" signal="A, 0" pin_num="P3" pin_signal="ADC0_A0"/>
                   <pin peripheral="ADC0" signal="TRG_CH, 0" pin_num="" pin_signal="CTIMER0_MATCH3"/>
                   <pin peripheral="DAC0" signal="OUT" pin_num="T1" pin_signal="PIO4_2/TRIG_IN6/FC2_P2/CT_INP12/SMARTDMA_PIO26/PLU_IN2/SINC0_MBIT3/DAC0_OUT/ADC0_A4/ADC1_A4/CMP0_IN4N/CMP1_IN4N/CMP2_IN4N"/>
+                  <pin peripheral="TSI0" signal="CH, 3" pin_num="B4" pin_signal="PIO1_3/WUU0_IN7/TRIG_OUT1/FC3_P3/CT1_MAT1/SCT0_IN7/FLEXIO0_D11/ENET0_MDIO/SAI1_RXD0/CAN0_RXD/TSI0_CH3/ADC0_A19/CMP0_IN1"/>
                </pins>
             </function>
          </functions_list>
@@ -837,6 +830,7 @@
                   <clock_output id="PLL0_CLK_clock.outFreq" value="150 MHz" locked="false" accuracy=""/>
                   <clock_output id="Slow_clock.outFreq" value="37.5 MHz" locked="false" accuracy=""/>
                   <clock_output id="System_clock.outFreq" value="150 MHz" locked="false" accuracy=""/>
+                  <clock_output id="TSI_clock.outFreq" value="12 MHz" locked="false" accuracy=""/>
                   <clock_output id="gdet_clock.outFreq" value="48 MHz" locked="false" accuracy=""/>
                   <clock_output id="trng_clock.outFreq" value="48 MHz" locked="false" accuracy=""/>
                </clock_outputs>
@@ -859,6 +853,8 @@
                   <setting id="SYSCON.FLEXSPICLKSEL.sel" value="NO_CLOCK" locked="false"/>
                   <setting id="SYSCON.FREQMEREFCLKSEL.sel" value="SYSCON.evtg_out0a" locked="false"/>
                   <setting id="SYSCON.FREQMETARGETCLKSEL.sel" value="SYSCON.evtg_out0a" locked="false"/>
+                  <setting id="SYSCON.TSICLKSEL.sel" value="SCG.FRO_12M" locked="false"/>
+                  <setting id="TSICLKDIV" value="Enable" locked="false"/>
                </clock_settings>
                <called_from_default_init>true</called_from_default_init>
             </clock_configuration>
@@ -1039,7 +1035,6 @@
                            <struct name="0"/>
                            <struct name="1"/>
                            <struct name="2"/>
-                           <struct name="3"/>
                         </array>
                         <array name="interrupts"/>
                      </config_set>
@@ -1208,7 +1203,7 @@
                         </struct>
                      </config_set>
                   </instance>
-                  <instance name="GPIO1" uuid="9704823c-ca48-47a5-9da0-ded16f727d2e" type="gpio" type_id="gpio_2.7.0" mode="GPIO" peripheral="GPIO1" enabled="true" comment="" custom_name_enabled="true" editing_lock="false">
+                  <instance name="GPIO1" uuid="9704823c-ca48-47a5-9da0-ded16f727d2e" type="gpio" type_id="gpio_2.7.0" mode="GPIO" peripheral="GPIO1" enabled="false" comment="" custom_name_enabled="true" editing_lock="false">
                      <config_set name="fsl_gpio">
                         <setting name="enable_irq" value="true"/>
                         <struct name="port_interrupt">
@@ -1216,22 +1211,6 @@
                            <setting name="enable_interrrupt" value="enabled"/>
                            <setting name="enable_priority" value="false"/>
                            <setting name="priority" value="0"/>
-                           <setting name="enable_custom_name" value="false"/>
-                        </struct>
-                        <setting name="enable_irq_1" value="false"/>
-                        <struct name="gpio_interrupt_1">
-                           <setting name="IRQn" value="GPIO01_IRQn"/>
-                           <setting name="enable_interrrupt" value="enabled"/>
-                           <setting name="enable_priority" value="false"/>
-                           <setting name="priority" value="1"/>
-                           <setting name="enable_custom_name" value="false"/>
-                        </struct>
-                        <setting name="enable_irq_EFT" value="false"/>
-                        <struct name="port_interrupt_EFT">
-                           <setting name="IRQn" value="noInt"/>
-                           <setting name="enable_interrrupt" value="enabled"/>
-                           <setting name="enable_priority" value="false"/>
-                           <setting name="priority" value="2"/>
                            <setting name="enable_custom_name" value="false"/>
                         </struct>
                      </config_set>
