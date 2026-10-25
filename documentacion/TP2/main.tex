@@ -148,8 +148,9 @@ sección~\ref{sec:verificacion}:
 La consigna pide habilitar o deshabilitar \emph{un} filtro. La implementación
 lo extiende: la tecla SW2 recorre en forma circular los cuatro filtros
 \ref{filtro:pb}--\ref{filtro:eb}, de modo que los cuatro se pueden comparar
-sobre la misma señal sin reprogramar la placa, y un botón aparte habilita o
-deshabilita el filtro elegido (sección~\ref{sec:habilitacion}). Para el
+sobre la misma señal sin reprogramar la placa; el touchpad E1 de la placa
+habilita o deshabilita el filtro elegido, y el LED indica con su parpadeo
+cuál está activo (sección~\ref{sec:habilitacion}). Para el
 filtrado se usa la biblioteca CMSIS-DSP en aritmética q15, con el mismo
 formato del buffer del Laboratorio~1.
 \end{nota}
@@ -173,7 +174,7 @@ IDE                     & MCUXpresso IDE v25.6.136\\
 SDK                     & \texttt{SDK\_26.06.00\_FRDM-MCXN947}\\
 Herramientas de config. & MCUXpresso Config Tools (Clocks, Pins, Peripherals)\\
 Proyecto base           & Proyecto del Laboratorio 1 (\archivo{TP1})\\
-Bibliotecas             & Drivers del SDK y CMSIS-DSP (\texttt{arm\_fir\_q15})\\
+Bibliotecas             & Drivers del SDK (incluido \texttt{fsl\_tsi\_v6}) y CMSIS-DSP (\texttt{arm\_fir\_q15})\\
 Diseño de filtros       & MATLAB R2023a (9.14.0.2206163), \texttt{firpm}, \texttt{fdatool}\\
 Generador de señales    & \\
 Osciloscopio            & \\
@@ -199,6 +200,8 @@ Sobre esa base:
         implementación previa usaba \texttt{fdatool} y el script
         \archivo{generar_filtros.m}, que generaba \archivo{source/filtros.h}
         (sección~\ref{sec:previa}).
+  \item Se agregó el driver \archivo{fsl_tsi_v6} del SDK (carpeta
+        \archivo{drivers}) para leer el touchpad de la placa.
   \item La lógica de la aplicación se escribió en \archivo{source/TP2.c}.
   \item La depuración se hace con el MCU-Link integrado de la placa, con la
         configuración guardada en \archivo{TP2 LinkServer Debug.launch}.
@@ -227,7 +230,7 @@ Disparo del ADC            & \pin{P0\_19}            & CT0\_MAT3          & \tex
 LED rojo / verde / azul    & \pin{P0\_10}, \pin{P0\_27}, \pin{P1\_2} & GPIO0, GPIO1 & Activos en bajo\\
 Tecla SW3 (velocidad)      & \pin{P0\_6}             & GPIO0, canal IRQ 0 & Flanco descendente, pull-up interno\\
 Tecla SW2 (filtro)         & \pin{P0\_23}            & GPIO0, canal IRQ 1 & Flanco descendente\\
-Habilitación del filtro    & \completar{pin}         & \completar{}       & \completar{botón; sección~\ref{sec:habilitacion}}\\
+Touchpad E1 (filtrado)     & \pin{P1\_3}             & TSI0, canal 3      & Self-cap, disparo por software\\
 Medición de la ISR         & \pin{P0\_26}            & GPIO0, salida      & \texttt{J2[10]}, en 1 durante la ISR del ADC\\
 \bottomrule
 \end{tabular}
@@ -260,7 +263,14 @@ Inicialización del DAC0 & Config Tools
                       & \texttt{init\_dac()} antes de
                         \texttt{BOARD\_InitBootPeripherals()}\\
 Tecla SW2             & Run/Stop & Selección de filtro (PB, PA, PBanda, EB)\\
-Habilitación del filtro & ---    & \completar{botón y pin (sección~\ref{sec:habilitacion})}\\
+Habilitación del filtro & ---    & Touchpad E1 (TSI0, canal 3, \pin{P1\_3}), leído
+                                   desde el lazo principal\\
+LED RGB               & Color según la $f_s$
+                      & Color según la $f_s$; parpadeo según el filtro, fijo
+                        con la salida sin filtrar\\
+Lazo principal        & Vacío    & Lee el touchpad y controla el LED, con una
+                                   base de tiempo de \qty{1}{\milli\second}
+                                   (SysTick)\\
 Pin de medición       & ---      & \pin{P0\_26} en 1 mientras se ejecuta la
                                    rutina del ADC (\texttt{MEDIR\_TIEMPO\_ISR})\\
 Buffers               & \texttt{samples[512]}
@@ -294,7 +304,9 @@ defecto (0), así que ninguna desaloja a otra. Esto es lo que permite que el
 cambio de filtro se aplique de forma segura (sección~\ref{sec:cambio-filtro}).
 A diferencia del Laboratorio 1, la rutina del ADC ahora puede ser larga
 (ejecuta el filtro completo), y su duración frente al período de muestreo se
-analiza en la sección~\ref{sec:carga}.
+analiza en la sección~\ref{sec:carga}. El SysTick, que sólo cuenta
+milisegundos para el touchpad y el LED (sección~\ref{sec:habilitacion}),
+queda con la prioridad mínima, así que nunca demora a la rutina del ADC.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \ejercicio{Diseño de los filtros}\label{sec:filtros}
@@ -1230,9 +1242,11 @@ el CTIMER0 dispara cada conversión a través del INPUTMUX, el LPADC0 deja el
 resultado en su FIFO y la rutina de interrupción lo convierte a q15, lo pasa
 por el filtro activo (o lo copia, en \emph{bypass}) y escribe el resultado en
 el DAC0. Las teclas sólo modifican el estado: SW3 cambia la frecuencia de
-muestreo (match del CTIMER0 y color del LED) y SW2 el tipo de filtro. Ambas
-avisan a la rutina del ADC, que es la única que cambia el filtro activo. El
-lazo principal queda vacío.
+muestreo (match del CTIMER0) y SW2 el tipo de filtro. Ambas avisan a la
+rutina del ADC, que es la única que cambia el filtro activo. El lazo
+principal lee el touchpad, que habilita o deshabilita el filtro, y es el
+único que escribe el LED: su color indica la frecuencia de muestreo y su
+parpadeo, el filtro (sección~\ref{sec:habilitacion}).
 
 \begin{figure}[H]
 \centering
@@ -1259,6 +1273,8 @@ lazo principal queda vacío.
 
   % --- Fila 4 ---
   \node[hw] (sw) at (6.6,-5.8) {Teclas\\SW3 (velocidad) \,/\, SW2 (filtro)};
+  \node[sw] (lazo) at (10.2,-5.8) {Lazo principal\\(\texttt{main()})};
+  \node[hw] (tsi)  at (13.5,-5.8) {Touchpad E1\\\periferico{TSI0}};
 
   % --- Señal ---
   \draw[senal] (gen) -- node[etiqueta,above]{$x(t)$} (adc);
@@ -1278,7 +1294,8 @@ lazo principal queda vacío.
   % --- Control ---
   \draw[control] (sw)  -- node[etiqueta,right]{flanco $\downarrow$} (isk);
   \draw[control] (isk) -- node[etiqueta,above]{nuevo MR} (tmr);
-  \draw[control] (isk) -- node[etiqueta,above]{color} (led);
+  \draw[control] (lazo) -- node[etiqueta,right]{color y\\parpadeo} (led);
+  \draw[control] (tsi) -- node[etiqueta,above]{toque} (lazo);
   \draw[control] (isk) -- node[etiqueta,right]{\texttt{cambio\_filtro}} (fir);
 
   % --- Leyenda ---
@@ -1337,11 +1354,11 @@ independientes (figura~\ref{fig:estados}):
 \end{itemize}
 
 Las dos teclas actúan en cualquier estado, y la combinación de ambas
-variables elige uno de los 20 filtros de la tabla~\ref{tab:compuestos}. El LED sólo
-indica la velocidad, no el filtro. Al reiniciar la placa el sistema arranca
-en E0 (\qty{8}{\kilo\sps}) y con el PB. Si la salida va filtrada o no lo
-decide otro botón, independiente de estas dos variables
-(sección~\ref{sec:habilitacion}).
+variables elige uno de los 20 filtros de la tabla~\ref{tab:compuestos}. El
+color del LED indica la velocidad y su frecuencia de parpadeo, el filtro. Al
+reiniciar la placa el sistema arranca en E0 (\qty{8}{\kilo\sps}), con el PB y
+con la salida filtrada. Si la salida va filtrada o no lo decide el touchpad,
+independientemente de estas dos variables (sección~\ref{sec:habilitacion}).
 
 \begin{figure}[H]
 \centering
@@ -1359,9 +1376,9 @@ decide otro botón, independiente de estas dos variables
 
   % --- Anillo de filtros ---
   \begin{scope}[xshift=7.6cm]
-    \foreach \i/\n in {0/PB, 1/PA, 2/PBanda, 3/EB} {
+    \foreach \i/\n/\f in {0/PB/1, 1/PA/2, 2/PBanda/4, 3/EB/8} {
       \node[estado] (f\i) at ({90-90*\i}:2.5)
-        {\textbf{F\i}\\[1pt]{\footnotesize\n}};
+        {\textbf{F\i}\\[-1pt]{\footnotesize\n}\\[-1pt]{\scriptsize\f\,Hz}};
     }
     \foreach \i/\j in {0/1,1/2,2/3,3/0}
       \draw[flecha] (f\i) to[bend left=18] node[etiqueta,sloped,above]{SW2} (f\j);
@@ -1370,23 +1387,114 @@ decide otro botón, independiente de estas dos variables
   \end{scope}
 \end{tikzpicture}
 \caption{Izquierda: selección circular de la velocidad de muestreo con SW3 y
-color del LED en cada estado. Derecha: selección circular del filtro con SW2.}
+color del LED en cada estado. Derecha: selección circular del filtro con SW2
+y frecuencia de parpadeo del LED con la salida filtrada.}
 \label{fig:estados}
 \end{figure}
 
-\subsection{Habilitación del filtro}\label{sec:habilitacion}
+\subsection{Habilitación del filtro e indicación en el LED}\label{sec:habilitacion}
 
-\completar{Describir el método definitivo para elegir entre la salida
-filtrada y la señal sin filtrar (\emph{bypass}): qué botón se usa, en qué pin
-y con qué interrupción y flanco; el estado inicial; si el filtro se sigue
-calculando mientras la salida va sin filtrar; y si al volver a filtrar se
-borra el estado (lo que produce un transitorio de $2D$ muestras en el PA y el
-EB). Con ese método actualizar también la tabla~\ref{tab:pines}, la
-tabla~\ref{tab:cambios}, la figura~\ref{fig:flujo-adc}, el
-código~\ref{lst:isr} y la tabla~\ref{tab:cumplimiento}. Mientras tanto, el
-firmware usa el pin \pin{P1\_23} (\texttt{J1[8]}, GPIO1 canal IRQ 0): cada
-flanco invierte \texttt{salida\_filtrada}, y el filtro sólo se calcula cuando
-esa variable vale 1.}
+\paragraph{Touchpad.} La salida filtrada se habilita y se deshabilita con el
+touchpad E1 de la placa, un electrodo capacitivo conectado a \pin{P1\_3},
+que es el canal 3 del TSI0 (\emph{Touch Sensing Input}). El TSI trabaja en
+modo \emph{self-cap}: carga y descarga la capacidad del electrodo y entrega
+una cuenta que baja cuando un dedo la aumenta. Cada toque invierte
+\texttt{salida\_filtrada}: con 1, la rutina del ADC filtra y envía al DAC la
+salida del filtro; con 0, envía la muestra del ADC sin filtrar y no calcula
+el filtro.
+
+El touchpad se lee desde el lazo principal, sin interrupciones, para no
+competir con la rutina del ADC:
+\begin{itemize}[nosep]
+  \item Al arrancar, \texttt{init\_touch()} configura \pin{P1\_3} como
+        entrada analógica del TSI, le da reloj desde el FRO de
+        \qty{12}{\mega\hertz} (el cristal externo que usa el ejemplo del SDK
+        no está habilitado en este proyecto) y mide la \emph{base}: el
+        promedio de 16 barridos sin tocar. Por eso no hay que tocar el
+        touchpad durante el reset.
+  \item Cada \qty{10}{\milli\second}, \texttt{touch\_actualizar()} dispara
+        un barrido por software y, en las vueltas siguientes del lazo,
+        consulta si terminó. Nunca espera: si un barrido no termina en
+        \qty{50}{\milli\second}, el touchpad se desactiva y se avisa por la
+        consola, y el resto del programa sigue funcionando.
+  \item Una lectura cuenta como toque si está más de 20 cuentas por debajo
+        de la base, y como liberación si vuelve a quedar a menos de 10
+        (histéresis). El cambio se acepta recién con 3 lecturas seguidas
+        (unos \qty{30}{\milli\second} de antirrebote), y sólo el paso de
+        \emph{sin tocar} a \emph{tocado} invierte la salida: mantener el
+        dedo apoyado no la vuelve a cambiar.
+  \item Al volver a habilitar el filtro se activa \texttt{cambio\_filtro},
+        así que la rutina del ADC borra los estados antes de la primera
+        muestra filtrada (sección~\ref{sec:cambio-filtro}) y el filtro no
+        arranca con la historia de antes de deshabilitarlo. A la salida se
+        ve el transitorio de $2D$ muestras del PA y del EB.
+\end{itemize}
+El umbral de 20 cuentas es el del ejemplo \texttt{tsi\_v6\_self\_cap} del
+SDK. Poniendo \texttt{DEPURAR\_TOUCH} en 1, el firmware imprime la cuenta
+cada \qty{200}{\milli\second}, lo que permite ajustarlo con la placa.
+\completar{Base medida y cuenta con el dedo apoyado; ajustar
+\texttt{TOQUE\_DELTA} si hace falta.}
+
+El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no se usa:
+\texttt{main()} deshabilita su interrupción después de inicializar los
+periféricos, y su rutina sólo limpia la bandera.
+\completar{Quitar la configuración de \pin{P1\_23} en Config Tools.}
+
+\paragraph{LED.} El LED RGB conserva el color de cada frecuencia de muestreo
+(tabla~\ref{tab:fs}), y su parpadeo indica el estado del filtro
+(tabla~\ref{tab:led}). La base de tiempo es el SysTick, configurado para
+interrumpir cada \qty{1}{\milli\second} con la prioridad mínima. Sólo el
+lazo principal escribe el LED (\texttt{led\_actualizar()}), y sólo cuando
+cambia lo que tiene que mostrar, así que no hay dos rutinas escribiendo los
+mismos pines.
+
+\begin{table}[H]
+\centering
+\caption{Indicación del LED: el color da la $f_s$ y el parpadeo, el filtro.}
+\label{tab:led}
+\begin{tabular}{@{}l l r@{}}
+\toprule
+\textbf{Estado} & \textbf{LED} & \textbf{Semiperíodo}\\
+\midrule
+Salida sin filtrar      & Fijo                       & ---\\
+PB                      & Parpadea a \qty{1}{\hertz} & \qty{500}{\milli\second}\\
+PA                      & Parpadea a \qty{2}{\hertz} & \qty{250}{\milli\second}\\
+PBanda                  & Parpadea a \qty{4}{\hertz} & \qty{125}{\milli\second}\\
+EB                      & Parpadea a \qty{8}{\hertz} & \qty{62}{\milli\second}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La figura~\ref{fig:flujo-lazo} resume el lazo principal. Como la rutina del
+ADC lo interrumpe en cada muestra, el lazo corre en el tiempo que queda
+libre, que en el peor caso estimado (el PBanda a \qty{48}{\kilo\sps}) es más
+de un tercio del período de muestreo; de sobra para tareas que tienen
+tiempos de decenas de milisegundos.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  \node[inicio] (m0) {Lazo principal};
+  \node[proceso, below=of m0] (m1)
+     {\texttt{touch\_actualizar()}:\\cada \qty{10}{\milli\second} dispara un
+      barrido;\\al terminar, lee la cuenta};
+  \node[decision, below=0.6cm of m1] (m2) {¿Toque\\nuevo?};
+  \node[proceso, right=1.0cm of m2] (m3)
+     {Invierte \texttt{salida\_filtrada}\\(al habilitar,\\
+      \texttt{cambio\_filtro} $\leftarrow$ 1)};
+  \node[proceso, below=0.6cm of m2] (m4)
+     {\texttt{led\_actualizar()}:\\color según la $f_s$;\\parpadeo según el
+      filtro, o fijo};
+  \draw[flecha] (m0) -- (m1);
+  \draw[flecha] (m1) -- (m2);
+  \draw[flecha] (m2) -- node[etiqueta,above]{sí} (m3);
+  \draw[flecha] (m3) |- (m4);
+  \draw[flecha] (m2) -- node[etiqueta,right]{no} (m4);
+  \draw[flecha] (m4.west) -- ++(-0.8,0) |- (m1.west);
+\end{tikzpicture}
+\caption{Lazo principal: lectura del touchpad y control del LED.}
+\label{fig:flujo-lazo}
+\end{figure}
 
 \subsection{Formato q15 y conversiones}\label{sec:q15}
 
@@ -1609,13 +1717,11 @@ salida sin filtrar también se usa mientras \texttt{filtros\_listos} es falso
   \node[inicio] (b0) {\texttt{GPIO0\_INT\_0} (SW3)};
   \node[proceso, below=of b0] (b1) {\texttt{state\_counter} $\leftarrow$\\(\texttt{state\_counter}+1) mod 5};
   \node[proceso, below=of b1] (b2) {\texttt{setup\_new\_match}\\(\texttt{sample\_vel[state]})};
-  \node[proceso, below=of b2] (b3) {\texttt{set\_state(state)}\\(color del LED)};
-  \node[proceso, below=of b3] (b4) {\texttt{cambio\_filtro} $\leftarrow$ 1};
+  \node[proceso, below=of b2] (b4) {\texttt{cambio\_filtro} $\leftarrow$ 1};
   \node[proceso, below=of b4] (b5) {Limpiar bandera};
   \draw[flecha] (b0) -- (b1);
   \draw[flecha] (b1) -- (b2);
-  \draw[flecha] (b2) -- (b3);
-  \draw[flecha] (b3) -- (b4);
+  \draw[flecha] (b2) -- (b4);
   \draw[flecha] (b4) -- (b5);
 
   % ---------------- ISR de SW2 ----------------
@@ -1629,10 +1735,9 @@ salida sin filtrar también se usa mientras \texttt{filtros\_listos} es falso
     \draw[flecha] (c2) -- (c3);
   \end{scope}
 \end{tikzpicture}
-\caption{Diagramas de flujo de las rutinas de las teclas (la del botón de
-habilitación del filtro se describe en la sección~\ref{sec:habilitacion}).
-Izquierda: cambio
-de velocidad (SW3). Derecha: cambio de filtro (SW2).}
+\caption{Diagramas de flujo de las rutinas de las teclas. Izquierda: cambio
+de velocidad (SW3). Derecha: cambio de filtro (SW2). El touchpad y el LED se
+atienden desde el lazo principal (figura~\ref{fig:flujo-lazo}).}
 \label{fig:flujo-teclas}
 \end{figure}
 
@@ -1776,7 +1881,11 @@ las rutinas de interrupción (\texttt{state\_counter},
 y \texttt{filtros\_listos}) se declaran \texttt{volatile}. El estado del
 camino angosto (\texttt{camino}, \texttt{hist\_x}, \texttt{acc\_hd},
 \texttt{hist\_w} y los contadores \texttt{fase} y \texttt{ranura}) sólo lo
-usa la rutina del ADC. Los buffers \texttt{buffer\_in} y \texttt{buffer\_out}
+usa la rutina del ADC, y el del touchpad (\texttt{touch\_base},
+\texttt{touch\_tocado} y los demás \texttt{touch\_*}), sólo el lazo
+principal. \texttt{ms\_ticks}, que incrementa el SysTick, es la base de
+tiempo del touchpad y del LED; \texttt{semiperiodo\_led\_ms} guarda el
+semiperíodo de parpadeo de cada filtro (tabla~\ref{tab:led}). Los buffers \texttt{buffer\_in} y \texttt{buffer\_out}
 guardan las últimas 512 muestras de entrada y de salida, lo que permite
 inspeccionarlas con el depurador.
 
@@ -1786,9 +1895,13 @@ inspeccionarlas con el depurador.
 (\texttt{init\_dac()}) y el pin de medición (\texttt{init\_pin\_medicion()})
 y recién después los periféricos generados por Config
 Tools, por el motivo explicado en la sección~\ref{sec:cambios-perif}. A
-continuación inicializa las instancias de filtro, fija el color del estado
-inicial, activa \texttt{cambio\_filtro} para que la primera muestra aplique
-la selección inicial y queda en un lazo vacío.
+continuación inicializa las instancias de filtro, activa
+\texttt{cambio\_filtro} para que la primera muestra aplique la selección
+inicial, configura el SysTick para interrumpir cada \qty{1}{\milli\second},
+inicializa el touchpad (\texttt{init\_touch()}, que mide la base) y entra en
+el lazo principal, que lee el touchpad y actualiza el LED
+(figura~\ref{fig:flujo-lazo}). También deshabilita la interrupción de
+\pin{P1\_23}, que ya no se usa.
 
 \subsection{Inicialización de los filtros}
 
@@ -1807,9 +1920,8 @@ procesar la muestra se aplica, si corresponde, el cambio de filtro pendiente;
 después se convierte a q15, se filtra (o se copia) y se envía al DAC. Si
 \texttt{MEDIR\_TIEMPO\_ISR} vale 1, la rutina pone en 1 el pin
 \pin{P0\_26} al entrar y en 0 al salir, para medir su duración
-(sección~\ref{sec:verificacion}). \completar{Actualizar el listado cuando se
-defina el método de habilitación del filtro
-(sección~\ref{sec:habilitacion}).}
+(sección~\ref{sec:verificacion}). \texttt{salida\_filtrada} la cambia el
+touchpad desde el lazo principal (sección~\ref{sec:habilitacion}).
 
 \begin{lstlisting}[caption={Procesamiento de una muestra en \texttt{ADC0\_IRQHANDLER()} (\texttt{source/TP2.c}).},label={lst:isr}]
 if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
@@ -1895,13 +2007,16 @@ static q15_t complemento_multitasa(q15_t x) {
 
 \subsection{Rutinas de las teclas y cambio de velocidad}
 
-La rutina de SW3 avanza \texttt{state\_counter} en forma circular,
-reprograma el CTIMER0 con \texttt{setup\_new\_match()} y actualiza el LED con
-\texttt{set\_state()}, igual que en el Laboratorio 1, y además activa
-\texttt{cambio\_filtro} para que se carguen los coeficientes de la nueva
-$f_s$. La rutina de SW2 avanza \texttt{filter\_counter} módulo 4 y activa la
-misma bandera. \completar{Rutina del botón de habilitación del filtro
-(sección~\ref{sec:habilitacion}).}
+La rutina de SW3 avanza \texttt{state\_counter} en forma circular y
+reprograma el CTIMER0 con \texttt{setup\_new\_match()}, igual que en el
+Laboratorio 1, y además activa \texttt{cambio\_filtro} para que se carguen
+los coeficientes de la nueva $f_s$. A diferencia del Laboratorio 1, no toca
+el LED: el lazo principal ve el nuevo \texttt{state\_counter} y cambia el
+color con \texttt{set\_state()}. La rutina de SW2 avanza
+\texttt{filter\_counter} módulo 4 y activa la misma bandera; el lazo
+principal cambia también la frecuencia de parpadeo. El touchpad no tiene
+rutina de interrupción: se lee desde el lazo principal
+(sección~\ref{sec:habilitacion}).
 
 La macro \texttt{FILA\_FILTRO()} permite, poniendo \texttt{SOLO\_8K} en 1,
 usar siempre los coeficientes diseñados para \qty{8}{\kilo\sps} sin importar
@@ -1925,8 +2040,9 @@ igual que el resto del filtro.
   \item Canal 1 del osciloscopio en la entrada, canal 2 en \texttt{J1[4]}
         (DAC0\_OUT).
   \item Con $f_s = \qty{8}{\kilo\sps}$, observar la señal sin filtrar
-        (\completar{botón de habilitación}) y recorrer los cuatro filtros
-        con SW2; para cada filtro, barrer la frecuencia del generador midiendo la
+        (tocando el touchpad E1, con el LED fijo) y recorrer los cuatro
+        filtros con SW2, verificando la frecuencia de parpadeo del LED
+        (tabla~\ref{tab:led}); para cada filtro, barrer la frecuencia del generador midiendo la
         amplitud de la salida. Calcular la ganancia
         $|H| = 20\log_{10}(V_{\text{out}}/V_{\text{in}})$ y compararla con la
         respuesta diseñada.
@@ -2051,9 +2167,10 @@ ADC.}{fig:osc-tiempo}
                          \texttt{buffer\_out}: \texttt{arm\_fir\_q15()} con
                          \texttt{BLOCK\_SIZE = 1} y el camino multitasa
                        & Tabla~\ref{tab:respuesta} & \completar{}\\
-\ref{req:tecla-filtro} & \completar{Botón de habilitación del filtro
-                         (sección~\ref{sec:habilitacion})}; SW2 elige
-                         el filtro (\texttt{filter\_counter} módulo 4)
+\ref{req:tecla-filtro} & El touchpad E1 (TSI0) alterna entre la salida
+                         filtrada y la señal sin filtrar; SW2 elige el
+                         filtro (\texttt{filter\_counter} módulo 4) y el LED
+                         lo indica con su parpadeo
                        & Demostración & \completar{}\\
 \ref{req:dac}          & \texttt{DAC\_SetData()} con la muestra de
                          \texttt{buffer\_out} en cada interrupción del ADC
@@ -2072,8 +2189,9 @@ banda y elimina banda, diseñados en MATLAB y ejecutados muestra a muestra en
 aritmética q15, con \texttt{arm\_fir\_q15()} de CMSIS-DSP y una estructura
 multitasa para las bandas angostas. Con SW3 se recorren
 las cinco frecuencias de muestreo del Laboratorio 1, con SW2 se elige uno de
-los cuatro filtros y con \completar{botón de habilitación} se pasa de la
-señal filtrada a la señal sin filtrar; para cada combinación
+los cuatro filtros y con el touchpad E1 se pasa de la señal filtrada a la
+señal sin filtrar, mientras el LED indica la frecuencia de muestreo con su
+color y el filtro con su parpadeo; para cada combinación
 se usan coeficientes diseñados para la $f_s$ activa.
 \completar{Resumir el resultado de la tabla~\ref{tab:cumplimiento}.}
 
@@ -2106,6 +2224,11 @@ Las decisiones principales del diseño fueron:
         de uno por filtro.
   \item \textbf{Cambio de filtro diferido a la rutina del ADC}, con borrado
         del estado, para que nunca se cambie de filtro en medio de un cálculo.
+  \item \textbf{Touchpad y LED en el lazo principal}, sin interrupciones
+        propias: el touchpad se lee por \emph{polling} sin esperas, con
+        antirrebote e histéresis, y el LED indica la $f_s$ con su color y el
+        filtro con su parpadeo. Así la rutina del ADC no comparte su
+        prioridad con tareas que no tienen requisitos de tiempo real.
 \end{itemize}
 
 La implementación previa mostró que el método de diseño no es la causa de
