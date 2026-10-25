@@ -14,6 +14,8 @@
 %     img/fda-pa-8k.png                          fdatool: respuesta del PA a 8 kS/s
 %     img/fda-pbanda-8k.png                      fdatool: respuesta del PBanda a 8 kS/s
 %     img/fda-eb-8k.png                          fdatool: respuesta del EB a 8 kS/s
+%     img/pb-multitasa.png, pa-, pbanda-, eb-    disenar_multitasa.m: respuestas
+%                                                compuestas a las cinco fs
 %     img/osc-bypass.jpeg                        entrada y salida en bypass
 %     img/osc-pb.jpeg                            entrada y salida con PB
 %     img/osc-pa.jpeg                            entrada y salida con PA
@@ -1141,8 +1143,38 @@ EB     & \qty{0.59}{\deci\bel} & \qty{26.80}{\deci\bel} & \qty{25}{\deci\bel}
 \end{tabular}
 \end{table}
 
-\completar{Agregar las figuras que genera \archivo{disenar_multitasa.m} con la
-respuesta en frecuencia de cada filtro compuesto.}
+Las figuras~\ref{fig:mt-pb} a~\ref{fig:mt-eb} muestran la respuesta en
+frecuencia de cada filtro compuesto, calculada con los coeficientes q15, a
+las cinco $f_s$ superpuestas y con eje de frecuencia logarítmico. La línea de
+trazos es la atenuación pedida y la de puntos, el límite inferior de la
+banda de paso; cada curva llega hasta su $f_s/2$. Las cinco curvas casi
+coinciden: la respuesta en hertz no depende de la velocidad. En el PA, el
+PBanda y el EB eso se cumple por construcción, porque la parte angosta se
+calcula siempre a \qty{1}{\kilo\hertz} con los mismos filtros $G$. Las
+figuras muestran la parte LTI de la respuesta; el nivel de las componentes
+espurias del cambio de tasa está en la tabla~\ref{tab:compuestos}.
+
+La carga de CPU que indican las leyendas es la de la muestra de diezmado con
+el diezmador calculado de una sola vez. El firmware lo reparte entre las $M$
+muestras, así que su carga es la de la tabla~\ref{tab:carga-multitasa}: por
+ejemplo, \qty{63}{\percent} y no \qty{92}{\percent} en el PBanda a
+\qty{48}{\kilo\sps}.
+
+\captura{img/pb-multitasa.png}{MATLAB}{Respuesta del pasa bajos a las cinco
+$f_s$, con coeficientes q15. Es un FIR directo; el título dice
+\emph{multitasa} porque el script grafica los cuatro filtros con la misma
+función.}{fig:mt-pb}
+
+\captura{img/pa-multitasa.png}{MATLAB}{Respuesta del pasa altos multitasa a
+las cinco $f_s$: rechazo por debajo de \qty{-30}{\deci\bel} hasta
+\qty{20}{\hertz} y banda de paso desde \qty{50}{\hertz}.}{fig:mt-pa}
+
+\captura{img/pbanda-multitasa.png}{MATLAB}{Respuesta del pasa banda
+multitasa (PA seguido del LPB) a las cinco $f_s$.}{fig:mt-pbanda}
+
+\captura{img/eb-multitasa.png}{MATLAB}{Respuesta del elimina banda
+multitasa a las cinco $f_s$: rechazo por debajo de \qty{-25}{\deci\bel}
+entre \qty{42.5}{\hertz} y \qty{57.5}{\hertz}.}{fig:mt-eb}
 
 \subsection{De MATLAB al firmware}\label{sec:matlab-firmware}
 
