@@ -59,6 +59,15 @@
 #define MEDIR_TIEMPO_ISR 1     /* 0 = desactivado */
 #define PIN_MEDICION     26U   /* P0_26 -> J2[10] */
 
+/* Ciclos de la ISR del ADC medidos con el DWT. Se leen en el depurador
+ * (Expressions): isr_ciclos_max / (SystemCoreClock / fs) es la carga de pico. */
+#define MEDIR_CICLOS_ISR 1     /* 0 = desactivado */
+#if MEDIR_CICLOS_ISR
+volatile uint32_t isr_ciclos_ult = 0;
+volatile uint32_t isr_ciclos_max = 0;
+volatile uint32_t isr_excesos    = 0;   /* ISR mas largas que el periodo de muestreo */
+#endif
+
 /* Touchpad E1 de la placa: TSI0 canal 3 en P1_3 (BOARD_TSI_ELECTRODE_1 del
  * ejemplo tsi_v6 del SDK). Pin y reloj en Config Tools; se lee desde el lazo
  * principal, sin interrupciones. */
@@ -133,6 +142,13 @@ static arm_fir_instance_q15 fir_g[2];          /* 0: G_PA, 1: G_EB */
 static q15_t estado_fs[MAX_TAPS_FS + BLOCK_SIZE];
 static q15_t estado_g[MAX_TAPS_G + BLOCK_SIZE];
 
+/* Historias duplicadas para fir_muestra() (la instancia de CMSIS solo aporta
+ * los coeficientes). */
+static q15_t    hist_fs[2 * MAX_TAPS_FS];
+static q15_t    hist_g[2 * MAX_TAPS_G];
+static uint16_t pos_fs;
+static uint16_t pos_g;
+
 /* Filtro activo (lo fija aplicar_seleccion) */
 static int tipo_activo = PB;
 static arm_fir_instance_q15 *fir_fs_activo;    /* PB o LPB de la fs activa */
@@ -177,6 +193,53 @@ void init_filtros(void) {
 	filtros_listos = true;
 }
 
+/* FIR de una muestra con los coeficientes de una instancia de CMSIS (mismo
+ * orden y mismo resultado que arm_fir_q15). Con blockSize = 1 esa funcion cae
+ * en el camino escalar y copia el estado entero en cada llamada (~10 ciclos
+ * por coeficiente, medido). Aca la historia esta duplicada (hist[p] y
+ * hist[p + N]), asi la ventana es contigua y no se mueve nada, y SMLALD
+ * hace dos productos por instruccion con acumulador de 64 bits. */
+/* Lectura de dos q15 como un word. No se usa read_q15x2() de CMSIS: hace
+ * memcpy() y el proyecto compila con -fno-builtin, asi que es una llamada
+ * real por lectura. Con packed el compilador emite un LDR, que en el M33
+ * acepta direcciones no alineadas (la ventana puede empezar en un q15 impar). */
+typedef struct { int32_t v; } __attribute__((packed)) word_noalineado_t;
+#define LEER_Q15X2_IA(p) \
+	(((p) += 2), ((const word_noalineado_t *)((p) - 2))->v)
+
+static q15_t fir_muestra(const arm_fir_instance_q15 *s, q15_t *hist,
+		uint16_t *pos, q15_t x) {
+	const uint32_t n = s->numTaps;
+	uint32_t p = *pos;
+
+	hist[p]     = x;
+	hist[p + n] = x;
+	p = (p + 1 == n) ? 0 : p + 1;
+	*pos = (uint16_t)p;
+
+	const q15_t *px = &hist[p];          /* de la mas vieja a la mas nueva */
+	const q15_t *pb = s->pCoeffs;
+	int64_t acc = 0;
+
+	for (uint32_t k = n >> 2; k > 0; k--) {
+		int32_t x0 = LEER_Q15X2_IA(px);
+		int32_t c0 = LEER_Q15X2_IA(pb);
+		int32_t x1 = LEER_Q15X2_IA(px);
+		int32_t c1 = LEER_Q15X2_IA(pb);
+		acc = __SMLALD(x0, c0, acc);
+		acc = __SMLALD(x1, c1, acc);
+	}
+	if (n & 2U) {
+		int32_t x0 = LEER_Q15X2_IA(px);
+		int32_t c0 = LEER_Q15X2_IA(pb);
+		acc = __SMLALD(x0, c0, acc);
+	}
+	if (n & 1U) {
+		acc += (int32_t)*px * *pb;
+	}
+	return (q15_t)__SSAT((int32_t)(acc >> 15), 16);
+}
+
 /* Una muestra del camino angosto. Devuelve x[n - D] - v[n] (PA o EB).
  * HD repartido: en lugar de calcular u[k] = sum HD[j] x[kM - j] de golpe en
  * el instante de diezmado, cada x[n] suma sus L productos a los L diezmados
@@ -204,7 +267,7 @@ static q15_t complemento_multitasa(q15_t x) {
 		q15_t u = (q15_t)__SSAT((int32_t)(acc_hd[ranura] >> 15), 16);
 		q15_t w;
 		acc_hd[ranura] = 0;
-		arm_fir_q15(c->g, &u, &w, BLOCK_SIZE);
+		w = fir_muestra(c->g, hist_g, &pos_g, u);
 		for (uint16_t m = L - 1; m > 0; m--) {
 			hist_w[m] = hist_w[m - 1];
 		}
@@ -236,11 +299,11 @@ static q15_t filtrar(q15_t x) {
 	q15_t y;
 	switch (tipo_activo) {
 	case PB:
-		arm_fir_q15(fir_fs_activo, &x, &y, BLOCK_SIZE);
+		y = fir_muestra(fir_fs_activo, hist_fs, &pos_fs, x);
 		break;
 	case PBANDA:
 		x = complemento_multitasa(x);                    /* PA ... */
-		arm_fir_q15(fir_fs_activo, &x, &y, BLOCK_SIZE);  /* ... y despues LPB */
+		y = fir_muestra(fir_fs_activo, hist_fs, &pos_fs, x);  /* ... y despues LPB */
 		break;
 	default:                                           /* PA y EB */
 		y = complemento_multitasa(x);
@@ -288,7 +351,11 @@ static void aplicar_seleccion(void) {
 	/* Sin historia del filtro anterior */
 	memset(estado_fs, 0, sizeof(estado_fs));
 	memset(estado_g,  0, sizeof(estado_g));
-	memset(hist_x,    0, sizeof(hist_x));
+	memset(hist_fs,   0, sizeof(hist_fs));
+	memset(hist_g,    0, sizeof(hist_g));
+	pos_fs = 0;
+	pos_g  = 0;
+	memset(hist_x,   0, sizeof(hist_x));
 	memset(acc_hd,    0, sizeof(acc_hd));
 	memset(hist_w,    0, sizeof(hist_w));
 	pos_x  = 0;
@@ -534,6 +601,10 @@ void ADC0_IRQHANDLER(void) {
 #if MEDIR_TIEMPO_ISR
   GPIO_PortSet(GPIO0, 1UL << PIN_MEDICION);      /* inicio de la ISR */
 #endif
+#if MEDIR_CICLOS_ISR
+  uint32_t t_ini = DWT->CYCCNT;
+  bool ise_cambio = cambio_filtro;
+#endif
   uint32_t trigger_status_flag;
   uint32_t status_flag;
   trigger_status_flag = LPADC_GetTriggerStatusFlags(ADC0_PERIPHERAL);
@@ -573,6 +644,24 @@ void ADC0_IRQHANDLER(void) {
 #if MEDIR_TIEMPO_ISR
   GPIO_PortClear(GPIO0, 1UL << PIN_MEDICION);    /* fin de la ISR */
 #endif
+#if MEDIR_CICLOS_ISR
+  {
+    uint32_t dt = DWT->CYCCNT - t_ini;
+    isr_ciclos_ult = dt;
+    /* la ISR que hace el memset de aplicar_seleccion() no cuenta */
+    if (!ise_cambio) {
+      if (dt > isr_ciclos_max) {
+        isr_ciclos_max = dt;
+      }
+      if (camino.m != 0U && dt > SystemCoreClock / (camino.m * 1000U)) {
+        isr_excesos++;
+      }
+    } else {
+      isr_ciclos_max = 0;       /* arranca de cero con el filtro nuevo */
+      isr_excesos    = 0;
+    }
+  }
+#endif
 
   #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
@@ -593,6 +682,12 @@ int main(void) {
 #ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
     /* Init FSL debug console. */
     BOARD_InitDebugConsole();
+#endif
+
+#if MEDIR_CICLOS_ISR
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;   /* habilita el DWT */
+    DWT->CYCCNT = 0;
+    DWT->CTRL  |= DWT_CTRL_CYCCNTENA_Msk;
 #endif
 
     init_filtros();
