@@ -1222,7 +1222,8 @@ de todos los coeficientes, está en el Anexo~\ref{sec:coeficientes}.
 \subsection{Comparación con la implementación previa}\label{sec:taps}
 
 La tabla~\ref{tab:comparacion} resume las diferencias. Las cargas de CPU son
-estimaciones con $c = 5$ ciclos por coeficiente (sección~\ref{sec:carga}).
+estimaciones con $c = 5$ ciclos por coeficiente (sección~\ref{sec:carga}); el
+peor caso de la multitasa además se midió (sección~\ref{sec:carga-medida}).
 
 \begin{table}[H]
 \centering
@@ -1259,7 +1260,8 @@ RAM de estado
 Peor carga estimada
            & EB a \qty{48}{\kilo\sps}: \qty{1217}{\percent} (Kaiser),
              \qty{1069}{\percent} (equiripple)
-           & PBanda a \qty{48}{\kilo\sps}: \qty{63}{\percent}\\
+           & PBanda a \qty{48}{\kilo\sps}: \qty{63}{\percent} (medido:
+             \qty{65}{\percent})\\
 Combinaciones en tiempo real (estimado)
            & 10 de 20 (Kaiser), 12 de 20 (equiripple)
            & 20 de 20\\
@@ -1906,9 +1908,11 @@ Cuando $U > 1$ la rutina del ADC todavía no terminó cuando llega el disparo
 siguiente. El disparo lo genera el hardware, así que el ADC sigue
 convirtiendo, pero la interrupción queda pendiente y se atiende recién al
 salir de la actual: se pierden muestras y la salida se actualiza a una tasa
-menor que $f_s$. \completar{Describir lo que se observó en la placa en
-esos casos (por ejemplo, salida distorsionada o LED/teclas que dejan de
-responder).}
+menor que $f_s$. Además, el lazo principal (touchpad y LED) corre sólo con
+el tiempo que deja la rutina del ADC: con $U$ cercano a 1 casi no se ejecuta,
+el LED deja de parpadear y el cambio de filtro parece no responder. Eso se
+observó en la placa con la primera versión de la implementación multitasa
+(sección~\ref{sec:carga-medida}).
 
 \paragraph{Carga de la implementación multitasa.} En la implementación
 multitasa el costo por muestra ya no es $N$. En cada muestra de entrada, el
@@ -1945,34 +1949,71 @@ repartido.}
 \end{tabular}
 \end{table}
 
-Las 20 combinaciones entran en tiempo real. El peor caso es el PBanda a
-\qty{48}{\kilo\sps}, con un \qty{63}{\percent}, y lo domina el LPB directo
-(338 coeficientes), no el camino angosto. Sin repartir el diezmador, ese
-caso llegaría al \qty{92}{\percent} en la muestra en que se diezma
-(sección~\ref{sec:camino}).
+Con $c = \ciclosportap$ las 20 combinaciones entran en tiempo real y el peor
+caso es el PBanda a \qty{48}{\kilo\sps}, con un \qty{63}{\percent}, que lo
+domina el LPB directo (338 coeficientes), no el camino angosto. Sin repartir
+el diezmador, ese caso llegaría al \qty{92}{\percent} en la muestra en que se
+diezma (sección~\ref{sec:camino}). Es una estimación: el valor de $c$ real
+resultó muy distinto, como muestra la sección siguiente.
 
-\begin{nota}[El costo por coeficiente depende de la compilación]
-El valor $c = \ciclosportap$ es una estimación. El valor real depende del
-nivel de optimización (la configuración \emph{Debug} de MCUXpresso compila
-por defecto con \texttt{-O0}, también la biblioteca CMSIS-DSP), de los
-estados de espera de la flash donde están los coeficientes y de la sobrecarga
-de llamar a la función con una sola muestra. Esa sobrecarga es grande: con
-\texttt{blockSize = 1}, \texttt{arm\_fir\_q15()} no usa el lazo que calcula
-cuatro salidas a la vez con instrucciones SIMD (\texttt{\_\_SMLALD}) y, al
-final de cada llamada, copia las $N-1$ muestras del buffer de estado, así
-que por cada muestra hace $N$ productos y además $N$ copias. En la
-sección~\ref{sec:verificacion} se mide; si difiere, basta cambiar
-\texttt{\textbackslash ciclosportap} en el preámbulo de \archivo{main.tex} y la
-tabla~\ref{tab:carga} se recalcula.
+\subsubsection{Carga medida}\label{sec:carga-medida}
 
-La teoría advierte además que un filtro FIR escrito directamente en C con
-índices de arreglo (\texttt{x[i]}) es ineficiente en tiempo real: necesita
-muchas operaciones de aritmética de direcciones y accede varias veces al
-arreglo de salida. La solución que propone es usar punteros y las funciones
-intrínsecas del IDE, que es lo que ya resuelve CMSIS-DSP. Esa es una razón
-para usar \texttt{arm\_fir\_q15()} en lugar de un lazo propio. También indica
-que, si la biblioteca se compila con \texttt{-O0}, se pierde parte de esa
-ventaja y el costo por coeficiente puede resultar mayor al estimado.
+La rutina del ADC mide su duración con el contador de ciclos del DWT
+(\texttt{MEDIR\_CICLOS\_ISR} en \archivo{source/TP2.c}): guarda el máximo desde
+el último cambio de filtro o de $f_s$ (\texttt{isr\_ciclos\_max}) y cuenta las
+veces que duró más que el período de muestreo (\texttt{isr\_excesos}). Se leen
+desde el depurador. La tabla~\ref{tab:carga-medida} resume las medidas en los
+dos casos con filtro directo a $f_s$ más exigentes, sin señal de entrada (el
+costo del FIR no depende del dato).
+
+\begin{table}[H]
+\centering
+\caption{Ciclos máximos de la rutina del ADC (\texttt{-O2}). El presupuesto es
+$f_{\text{CPU}}/f_s$. La primera versión usa \texttt{arm\_fir\_q15()} con
+\texttt{blockSize = 1}; la segunda, \texttt{fir\_muestra()}.}
+\label{tab:carga-medida}
+\begin{tabular}{@{}l l r r r r@{}}
+\toprule
+\textbf{Caso} & \textbf{FIR} & \textbf{Máx.} & \textbf{Presupuesto} &
+\textbf{$U$ pico} & \textbf{Excesos}\\
+\midrule
+PB, \qty{44}{\kilo\sps}     & CMSIS      & \num{3378}  & \num{3409} & \qty{99}{\percent}  & 0\\
+PB, \qty{44}{\kilo\sps}     & propio     & \num{1189}  & \num{3409} & \qty{35}{\percent}  & 0\\
+PBanda, \qty{48}{\kilo\sps} & CMSIS      & \num{5364}  & \num{3125} & \qty{172}{\percent} & \num{85812}\\
+PBanda, \qty{48}{\kilo\sps} & propio     & \num{2034}  & \num{3125} & \qty{65}{\percent}  & 0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{nota}[El costo por coeficiente: medición y causa]
+Con \texttt{arm\_fir\_q15()} el costo medido fue de unos 10 ciclos por
+coeficiente (\num{3378}/340 en el PB a \qty{44}{\kilo\sps}), el doble de los
+$c = 5$ estimados, aun con la biblioteca compilada con \texttt{-O2}. La causa
+está en el código de la biblioteca: con \texttt{blockSize = 1} no se usa el
+lazo SIMD sino el escalar (una carga de 16 bits, un producto y una suma de
+64 bits por coeficiente), y al final de cada llamada se copian de a una las
+$N-1$ muestras del estado. Con el PB a \qty{44}{\kilo\sps} la rutina ocupó el
+\qty{99}{\percent} del período; con el PBanda a \qty{48}{\kilo\sps} excedió el
+período (hasta el \qty{172}{\percent}) y el lazo principal no corrió: el LED
+se quedaba fijo y el cambio de filtro con el SW2 parecía requerir dos
+pulsaciones, aunque el cambio se había hecho. Sólo ocurría con el PB y el
+PBanda, que son los que calculan un FIR largo a $f_s$.
+
+Se reemplazó esa llamada por \texttt{fir\_muestra()}, que da el mismo
+resultado (acumulador de 64 bits, desplazamiento de 15 bits y saturación) con
+dos cambios: guarda la historia duplicada (\texttt{hist[p]} y
+\texttt{hist[p + N]}), de modo que la ventana es contigua y no se copia nada,
+y usa \texttt{\_\_SMLALD}, que hace dos productos por instrucción. Un primer
+intento con \texttt{read\_q15x2()} de CMSIS empeoró la rutina al doble
+(\num{6771} ciclos en el PB a \qty{44}{\kilo\sps}): esa función usa
+\texttt{memcpy()}, y como el proyecto compila con \texttt{-fno-builtin} cada
+lectura era una llamada real a la biblioteca. Con una lectura de 32 bits
+directa el costo bajó a unos 3,5 ciclos por coeficiente, 2,8 veces menos que
+con CMSIS, y el peor caso quedó en el \qty{65}{\percent}.
+
+Esto matiza lo que advierte la teoría sobre usar la biblioteca antes que un
+lazo propio: vale para tamaños de bloque razonables, pero con una sola muestra
+por llamada y el SIMD sin usar, un lazo escrito para ese caso es más rápido.
 \end{nota}
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -2063,7 +2104,8 @@ if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
 \end{lstlisting}
 
 \texttt{filtrar()} elige según el tipo activo: el PB es una llamada a
-\texttt{arm\_fir\_q15()}; el PA y el EB, una llamada a
+\texttt{fir\_muestra()} (FIR de una muestra con los coeficientes de la
+instancia de CMSIS, sección~\ref{sec:carga-medida}); el PA y el EB, una llamada a
 \texttt{complemento\_multitasa()}; y el PBanda, las dos en cascada (con el
 LPB). El código~\ref{lst:camino} es el camino angosto con el diezmador
 repartido de la sección~\ref{sec:camino}.
@@ -2091,7 +2133,7 @@ static q15_t complemento_multitasa(q15_t x) {
     q15_t u = (q15_t)__SSAT((int32_t)(acc_hd[ranura] >> 15), 16);
     q15_t w;
     acc_hd[ranura] = 0;
-    arm_fir_q15(c->g, &u, &w, BLOCK_SIZE);
+    w = fir_muestra(c->g, hist_g, &pos_g, u);
     for (uint16_t m = L - 1; m > 0; m--) {
       hist_w[m] = hist_w[m - 1];
     }
