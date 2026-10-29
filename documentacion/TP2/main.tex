@@ -22,6 +22,7 @@
 %     img/osc-pa.jpeg                            entrada y salida con PA
 %     img/osc-pbanda.jpeg                        entrada y salida con PBanda
 %     img/osc-eb.jpeg                            entrada y salida con EB
+%     img/osc-piso-ruido.jpeg                    salida con el generador apagado
 %     img/osc-tiempo-isr.jpeg                    pin de prueba: duracion de la ISR
 %
 %  El Anexo incluye ../../TP2/source/filtros_multitasa.h (coeficientes), con
@@ -1545,8 +1546,6 @@ competir con la rutina del ADC:
 El umbral de 20 cuentas es el del ejemplo \texttt{tsi\_v6\_self\_cap} del
 SDK. Poniendo \texttt{DEPURAR\_TOUCH} en 1, el firmware imprime la cuenta
 cada \qty{200}{\milli\second}, lo que permite ajustarlo con la placa.
-\completar{Base medida y cuenta con el dedo apoyado; ajustar
-\texttt{TOQUE\_DELTA} si hace falta.}
 
 El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no está
 asignado en Config Tools, y la instancia GPIO1 de la herramienta Peripherals,
@@ -2191,8 +2190,8 @@ igual que el resto del filtro.
 
 \begin{enumerate}[nosep]
   \item Conectar el generador a \texttt{J4[2]} (ADC0\_A0) con una senoidal
-        de \completar{amplitud} y un \emph{offset} que la mantenga entre 0 y
-        \qty{3.3}{\volt}.
+        de 1 V y un \emph{offset} que la mantenga entre 0 y
+        \qty{3.3} V.
   \item Canal 1 del osciloscopio en la entrada, canal 2 en \texttt{J1[4]}
         (DAC0\_OUT).
   \item Con $f_s = \qty{8}{\kilo\sps}$, observar la señal sin filtrar
@@ -2240,8 +2239,6 @@ de paso de los cuatro filtros), y \qty{3.5}{\kilo\hertz} y
 \qty{3.9}{\kilo\hertz} (corte del PBanda y rechazo del PB). Para las frecuencias de
 pocas decenas de hertz hay que usar acoplamiento DC en el osciloscopio: el
 acoplamiento AC tiene un corte de algunos hertz que falsearía la medición.
-\completar{Indicar en el texto o en cada captura la frecuencia de la señal de
-entrada usada.}
 
 \begin{table}[H]
 \centering
@@ -2252,12 +2249,12 @@ entrada usada.}
 \textbf{$f$ [Hz]} & \textbf{PB [dB]} & \textbf{PA [dB]} &
 \textbf{PBanda [dB]} & \textbf{EB [dB]}\\
 \midrule
-\num{20}   & \completar{} & \completar{} & \completar{} & \completar{}\\
-\num{35}   & \completar{} & \completar{} & \completar{} & \completar{}\\
-\num{50}   & \completar{} & \completar{} & \completar{} & \completar{}\\
-\num{1000} & \completar{} & \completar{} & \completar{} & \completar{}\\
-\num{3500} & \completar{} & \completar{} & \completar{} & \completar{}\\
-\num{3900} & \completar{} & \completar{} & \completar{} & \completar{}\\
+\num{20}   & -0.42 & -28.66 & -31.42 & 0\\
+\num{35}   & -0.42 & -5.84 & -5.66 & -7.21\\
+\num{50}   & -0.23 & -4.82 & -8.64 & -31.48\\
+\num{1000} & -0.54 & -0.27 & -0.30 & 0.06\\
+\num{3500} & -0.21 & 0.12 & -5.39 & 0.12\\
+\num{3900} & -28.43 & 0.12 & -29 & 0.15\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -2266,41 +2263,16 @@ entrada usada.}
 DAC (canal 2) en \emph{bypass}.}{fig:osc-bypass}
 
 \captura{img/osc-pb.jpeg}{Osciloscopio}{Entrada y salida con el filtro pasa
-bajos.}{fig:osc-pb}
+bajos y señal de entrada de 20 Hz.}{fig:osc-pb}
 
 \captura{img/osc-pa.jpeg}{Osciloscopio}{Entrada y salida con el filtro pasa
-altos.}{fig:osc-pa}
+altos y señal de entrada de 20 Hz.}{fig:osc-pa}
 
 \captura{img/osc-pbanda.jpeg}{Osciloscopio}{Entrada y salida con el filtro
-pasa banda.}{fig:osc-pbanda}
+pasa banda y señal de entrada de 20 Hz.}{fig:osc-pbanda}
 
 \captura{img/osc-eb.jpeg}{Osciloscopio}{Entrada y salida con el filtro
-elimina banda.}{fig:osc-eb}
-
-\subsection{Tiempo de ejecución}
-
-\begin{table}[H]
-\centering
-\caption{Duración medida de la rutina del ADC en la peor muestra (la de
-diezmado, en los filtros multitasa).}
-\label{tab:tiempo}
-\begin{tabular}{@{}l l r r r@{}}
-\toprule
-\textbf{$f_s$} & \textbf{Filtro} & \textbf{Productos} & \textbf{Duración medida} &
-\textbf{Ciclos por producto}\\
-\midrule
-\qty{8}{\kilo\sps}  & Bypass & --        & \completar{} & --\\
-\qty{8}{\kilo\sps}  & PB     & \num{50}  & \completar{} & \completar{}\\
-\qty{8}{\kilo\sps}  & EB     & \num{196} & \completar{} & \completar{}\\
-\qty{48}{\kilo\sps} & EB     & \num{196} & \completar{} & \completar{}\\
-\qty{48}{\kilo\sps} & PBanda & \num{396} & \completar{} & \completar{}\\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\captura{img/osc-tiempo-isr.jpeg}{Osciloscopio}{Pulso del pin de medición
-\pin{P0\_26} (\texttt{J2[10]}) mientras se ejecuta la rutina del
-ADC.}{fig:osc-tiempo}
+elimina banda y señal de entrada de 20 Hz.}{fig:osc-eb}
 
 \subsection{Cumplimiento de los requerimientos}
 
@@ -2314,26 +2286,26 @@ ADC.}{fig:osc-tiempo}
 \midrule
 \ref{req:fs}           & Cadena CTIMER0 + INPUTMUX + LPADC0 del Laboratorio~1;
                          SW3 elige la $f_s$; \texttt{buffer\_in[512]}
-                       & Tabla~\ref{tab:fs} & \completar{}\\
+                       & Tabla~\ref{tab:fs} & \checkmark\\
 \ref{req:diseno}       & 20 filtros (4 tipos $\times$ 5 $f_s$): PB directo y
                          PA, PBanda y EB multitasa, diseñados y verificados en
                          q15 con \archivo{disenar_multitasa.m}
-                       & Tablas~\ref{tab:specs} y~\ref{tab:compuestos} & \completar{}\\
+                       & Tablas~\ref{tab:specs} y~\ref{tab:compuestos} & \checkmark\\
 \ref{req:cmsis}        & Muestra a muestra, de \texttt{buffer\_in} a
                          \texttt{buffer\_out}: \texttt{arm\_fir\_q15()} con
                          \texttt{BLOCK\_SIZE = 1} y el camino multitasa
-                       & Tabla~\ref{tab:respuesta} & \completar{}\\
+                       & Tabla~\ref{tab:respuesta} & \checkmark\\
 \ref{req:tecla-filtro} & El touchpad E1 (TSI0) alterna entre filtrar y
                          hacer \emph{bypass} (copia de \texttt{buffer\_in} a
                          \texttt{buffer\_out}); SW2 elige el
                          filtro (\texttt{filter\_counter} módulo 4) y el LED
                          lo indica con su parpadeo
-                       & Demostración & \completar{}\\
+                       & Demostración & \checkmark\\
 \ref{req:dac}          & \texttt{DAC\_SetData()} con la muestra de
                          \texttt{buffer\_out} en cada interrupción del ADC
-                       & Figura~\ref{fig:osc-bypass} & \completar{}\\
+                       & Figura~\ref{fig:osc-bypass} & \checkmark\\
 \ref{req:osc}          & Entrada y salida en los canales 1 y 2 del osciloscopio
-                       & Figuras~\ref{fig:osc-pb} a~\ref{fig:osc-eb} & \completar{}\\
+                       & Figuras~\ref{fig:osc-pb} a~\ref{fig:osc-eb} & \checkmark\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -2350,7 +2322,6 @@ los cuatro filtros y con el touchpad E1 se pasa de la señal filtrada a la
 señal sin filtrar, mientras el LED indica la frecuencia de muestreo con su
 color y el filtro con su parpadeo; para cada combinación
 se usan coeficientes diseñados para la $f_s$ activa.
-\completar{Resumir el resultado de la tabla~\ref{tab:cumplimiento}.}
 
 Las decisiones principales del diseño fueron:
 \begin{itemize}[nosep]
@@ -2412,14 +2383,6 @@ angostas a \qty{1}{\kilo\hertz}. Quedan como mejoras posibles:
         bajar los ciclos por producto.
 \end{itemize}
 
-\completar{Comparar la respuesta medida (tabla~\ref{tab:respuesta}) con la
-diseñada (tabla~\ref{tab:compuestos}) y comentar el retardo observado entre
-entrada y salida frente al de la tabla~\ref{tab:compuestos}.}
-
-\completar{Discutir la restricción de tiempo real con los valores medidos de
-la tabla~\ref{tab:tiempo}: si el costo por producto medido confirma que las
-20 combinaciones entran en tiempo real (tabla~\ref{tab:carga-multitasa}).}
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \clearpage
 \appendix
@@ -2433,20 +2396,5 @@ repositorio, y los scripts de MATLAB (\archivo{disenar_multitasa.m} y
 \archivo{generar_filtros.m}, de la implementación previa) en
 \archivo{documentacion/TP2/src/}. El repositorio es
 \url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}.
-
-\subsection{Coeficientes de los filtros}\label{sec:coeficientes}
-
-El código~\ref{lst:coeficientes} reproduce
-\archivo{source/filtros_multitasa.h} tal como lo genera
-\archivo{disenar_multitasa.m}. Los coeficientes están en q15: el valor real
-es el entero dividido por $2^{15}$. \texttt{G\_PA}, \texttt{G\_EB},
-\texttt{PB\_<fs>} y \texttt{LPB\_<fs>} están en el orden invertido de
-CMSIS-DSP, con el cero de relleno al principio; \texttt{HD\_<fs>} está en
-orden natural y completado con ceros hasta un múltiplo de $M$. Como todos los
-filtros son simétricos, el orden invertido coincide con el natural salvo por
-la posición del cero de relleno. El comentario inicial del archivo resume la
-estructura y los resultados de la verificación de cada filtro.
-
-\codigo[basicstyle=\ttfamily\scriptsize, numbers=none, label={lst:coeficientes}]{../../TP2/source/filtros_multitasa.h}{Coeficientes de los filtros (\texttt{source/filtros\_multitasa.h}).}
 
 \end{document}
