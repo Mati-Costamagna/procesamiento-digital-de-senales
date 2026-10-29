@@ -157,7 +157,7 @@ pin_labels:
 - {pin_num: G4, pin_signal: PIO1_18/FREQME_CLK_IN0/FC5_P2/FC3_P6/CT3_MAT0/SCT0_IN6/FLEXIO0_D26/SMARTDMA_PIO14/PLU_IN4/ENET0_COL/CAN0_TXD/ADC1_A18, label: 'P1_18/J9[6]'}
 - {pin_num: J4, pin_signal: VSS1, label: GND}
 - {pin_num: L4, pin_signal: PIO1_22/TRIG_IN3/FC5_P6/FC4_P2/CT_INP14/SCT0_OUT4/FLEXIO0_D30/SMARTDMA_PIO18/ADC1_A22, label: 'P1_22/J9[24]/J3[3]/SJ9[3]'}
-- {pin_num: M4, pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, label: 'P1_23/J9[23]/SJ1[1]'}
+- {pin_num: M4, pin_signal: PIO1_23/FC4_P3/CT_INP15/SCT0_OUT5/FLEXIO0_D31/SMARTDMA_PIO19/ADC1_A23, label: 'P1_23/J9[23]/SJ1[1]', identifier: SEL}
 - {pin_num: N4, pin_signal: PIO2_11/TRACE_DATA3/SCT0_IN5/PWM1_X3/FLEXIO0_D19/SMARTDMA_PIO30/FLEXSPI0_B_DATA7/SINC0_MBIT4/SAI1_TXD1, label: 'P2_11/J8[16]'}
 - {pin_num: P4, pin_signal: VDD_P40, label: VDD_P4}
 - {pin_num: R4, pin_signal: VDD_ANA, label: 'VDD_ANA/J2[16]'}
@@ -728,6 +728,7 @@ BOARD_InitPERIPHERALsPins:
   - {pin_num: P3, peripheral: ADC0, signal: 'A, 0', pin_signal: ADC0_A0}
   - {peripheral: ADC0, signal: 'TRG_CH, 0', pin_signal: CTIMER0_MATCH3}
   - {pin_num: T1, peripheral: DAC0, signal: OUT, pin_signal: PIO4_2/TRIG_IN6/FC2_P2/CT_INP12/SMARTDMA_PIO26/PLU_IN2/SINC0_MBIT3/DAC0_OUT/ADC0_A4/ADC1_A4/CMP0_IN4N/CMP1_IN4N/CMP2_IN4N}
+  - {pin_num: B4, peripheral: TSI0, signal: 'CH, 3', pin_signal: PIO1_3/WUU0_IN7/TRIG_OUT1/FC3_P3/CT1_MAT1/SCT0_IN7/FLEXIO0_D11/ENET0_MDIO/SAI1_RXD0/CAN0_RXD/TSI0_CH3/ADC0_A19/CMP0_IN1}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -744,6 +745,8 @@ void BOARD_InitPERIPHERALsPins(void)
     CLOCK_EnableClock(kCLOCK_InputMux0);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
+    /* Enables the clock for PORT1: Enables clock */
+    CLOCK_EnableClock(kCLOCK_Port1);
     /* Enables the clock for PORT4: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port4);
     /* Timer CTIMER0 Match 3 is selected as trigger input for ADC0 channel 0 */
@@ -758,6 +761,16 @@ void BOARD_InitPERIPHERALsPins(void)
 
                       /* Input Buffer Enable: Enables. */
                       | PORT_PCR_IBE(PCR_IBE_ibe1));
+
+    /* PORT1_3 (pin B4) is configured as TSI0_CH3 */
+    PORT_SetPinMux(PORT1, 3U, kPORT_MuxAlt0);
+
+    PORT1->PCR[3] = ((PORT1->PCR[3] &
+                      /* Mask bits to zero which are setting */
+                      (~(PORT_PCR_IBE_MASK)))
+
+                     /* Input Buffer Enable: Disables. */
+                     | PORT_PCR_IBE(PCR_IBE_ibe0));
 
     /* PORT4_2 (pin T1) is configured as DAC0_OUT */
     PORT_SetPinMux(PORT4, 2U, kPORT_MuxAlt0);

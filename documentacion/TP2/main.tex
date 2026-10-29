@@ -1,0 +1,2400 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  Laboratorio 2 - Filtros FIR con CMSIS-DSP en MCXN947
+%  Estructura de carpetas esperada (igual que en el TP1):
+%     main.tex
+%     informe-fcefyn.sty      -> copiar de documentacion/TP1/
+%     img/                    -> logos, capturas de fdatool, Config Tools y
+%                                del osciloscopio
+%
+%  Imagenes que usa este documento (las que falten aparecen como un recuadro
+%  rojo con el nombre esperado):
+%     img/unc_logo.png, img/fcefyn_logo.png      (los mismos del TP1)
+%     img/peripherals-lpadc-tp2.png              Config Tools > ADC0 en 16 bits
+%     img/pins-tsi-tp2.png                       Config Tools > Pins: P1_3 como TSI0_CH3
+%     img/fda-pb-8k.png                          fdatool: respuesta del PB a 8 kS/s
+%     img/fda-pa-8k.png                          fdatool: respuesta del PA a 8 kS/s
+%     img/fda-pbanda-8k.png                      fdatool: respuesta del PBanda a 8 kS/s
+%     img/fda-eb-8k.png                          fdatool: respuesta del EB a 8 kS/s
+%     img/pb-multitasa.png, pa-, pbanda-, eb-    disenar_multitasa.m: respuestas
+%                                                compuestas a las cinco fs
+%     img/osc-bypass.jpeg                        entrada y salida en bypass
+%     img/osc-pb.jpeg                            entrada y salida con PB
+%     img/osc-pa.jpeg                            entrada y salida con PA
+%     img/osc-pbanda.jpeg                        entrada y salida con PBanda
+%     img/osc-eb.jpeg                            entrada y salida con EB
+%     img/osc-piso-ruido.jpeg                    salida con el generador apagado
+%     img/osc-tiempo-isr.jpeg                    pin de prueba: duracion de la ISR
+%
+%  El Anexo incluye ../../TP2/source/filtros_multitasa.h (coeficientes), con
+%  la ruta relativa a esta carpeta.
+%
+%  Todo lo que aparece entre corchetes rojos (\completar{...}) es contenido
+%  que falta llenar. Para la entrega, descomentar \entregafinal: el documento
+%  avisara en el log si quedo alguna marca sin resolver.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[11pt,a4paper]{article}
+\usepackage{informe-fcefyn}
+
+% \entregafinal
+
+% ------------------------- Datos de la caratula ------------------------------
+\materia{Procesamiento Digital de Señales}
+\carrera{Ingeniería en Computación}
+\subtitulo{Laboratorio 2}
+\tema{Filtros FIR con CMSIS-DSP en MCXN947}
+\plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} CMSIS-DSP \textperiodcentered{} MATLAB}
+\autor{Costamagna, Matias Javier}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
+\autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
+\autor{Rivera, Mariano}{45.432.921}{luismarianorivera.25@mi.unc.edu.ar}
+\autor{Rojas, Facundo Nicolás}{44.629.222}{facundo.rojas.222@mi.unc.edu.ar}
+\docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides \quad\textperiodcentered\quad Ferreyra, Pablo Alejandro}
+\fechaentrega{\today}
+\logoizquierdo{img/unc_logo.png}
+\logoderecho{img/fcefyn_logo.jpg}
+
+% ---------------- Parametros del diseno (usados en las tablas) ---------------
+% Igual que en el TP1: CTIMER0 a 150 MHz, match 3 en toggle.
+\frecuenciatimer{150000000}
+\divisordisparo{2}
+
+% ---------------- Carga de CPU estimada por el filtro FIR --------------------
+% Reloj del nucleo [Hz] y ciclos por coeficiente de arm_fir_q15 con
+% blockSize = 1. El 5 es la estimacion que usa generar_filtros.m; si se mide
+% el valor real (seccion de verificacion), cambiarlo aca y la tabla de carga
+% se recalcula sola.
+\newcommand{\fcpu}{150000000}
+\newcommand{\ciclosportap}{5}
+% \carga{fs}{taps}: porcentaje del periodo de muestreo que ocupa el filtro.
+% Se marca en rojo si supera el 100 %.
+\newcommand{\carga}[2]{%
+  \xdef\cargatmp{\fpeval{round(100*(#2)*\ciclosportap*(#1)/\fcpu,1)}}%
+  \ifdim\cargatmp pt>100pt
+    \textcolor{rojoaviso}{\textbf{\num{\cargatmp}}}%
+  \else
+    \num{\cargatmp}%
+  \fi}
+% \filacarga{fs}{taps PB}{taps PA}{taps PBanda}{taps EB}
+\newcommand{\filacarga}[5]{%
+  \xdef\ciclostmp{\fpeval{round(\fcpu/(#1))}}%
+  \qty{#1}{\hertz} & \num{\ciclostmp} &
+  \carga{#1}{#2} & \carga{#1}{#3} & \carga{#1}{#4} & \carga{#1}{#5}\\}
+% \filataps{fs}{taps PB}{taps PA}{taps PBanda}{taps EB}
+\newcommand{\filataps}[5]{%
+  \xdef\tapstmp{\fpeval{#2+#3+#4+#5}}%
+  \qty{#1}{\hertz} & \num{#2} & \num{#3} & \num{#4} & \num{#5} &
+  \num{\tapstmp}\\}
+
+% \filakaiser{filtro}{A [dB]}{transicion [Hz]}{N impl. a 8k}{N impl. a 48k}
+% Orden estimado de la ventana de Kaiser: M = (A - 8) / (2,285 * 2 pi df / fs)
+\newcommand{\filakaiser}[5]{%
+  \xdef\kaiserocho{\fpeval{ceil(((#2)-8)/(2.285*2*pi*(#3)/8000))}}%
+  \xdef\kaisercuarentayocho{\fpeval{ceil(((#2)-8)/(2.285*2*pi*(#3)/48000))}}%
+  #1 & \qty{#3}{\hertz} & \qty{#2}{\deci\bel} &
+  \num{\kaiserocho} & \num{#4} & \num{\kaisercuarentayocho} & \num{#5}\\}
+
+\begin{document}
+
+\caratula
+\setcounter{tocdepth}{2}
+\tableofcontents
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introducción}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{consigna}[Laboratorio 2 \textemdash{} Filtros FIR por muestras]
+\textbf{Objetivo.} Realizar el diseño e implementación de filtros FIR usando
+procesamiento por muestras.
+
+\textbf{Descripción.} Realizar un programa aplicativo que sea capaz de aplicar
+un filtro FIR, por muestras, a un buffer de memoria de 512 muestras, que es
+adquirido con el Laboratorio~1 teniendo en cuenta las frecuencias de muestreo
+de \qtylist{8;16;22;44;48}{\kilo\hertz}. Con una de las teclas de la placa de
+evaluación FRDM-MCXN947 se habilitará la aplicación del filtro o se hará
+\emph{bypass} del filtro a un buffer de salida distinto del buffer de entrada.
+De este buffer de salida se enviarán las muestras al DAC de la placa.
+Visualizar el resultado utilizando un osciloscopio y comparar los resultados.
+
+\textbf{Requerimientos de los filtros.}
+\begin{enumerate}[nosep,label=\textbf{F\arabic*},leftmargin=2.2em]
+  \item \label{filtro:pb} Pasa bajos: $f_c = \qty{3600}{\hertz}$,
+        $A_{\text{stop}} = \qty{30}{\deci\bel}$.
+  \item \label{filtro:pa} Pasa altos: $f_c = \qty{35}{\hertz}$,
+        $A_{\text{stop}} = \qty{30}{\deci\bel}$.
+  \item \label{filtro:pbanda} Pasa banda: $f_{c1} = \qty{35}{\hertz}$,
+        $f_{c2} = \qty{3500}{\hertz}$, $A_{\text{stop}} = \qty{30}{\deci\bel}$.
+  \item \label{filtro:eb} Elimina banda: $f_r = \qty{50}{\hertz}$,
+        $BW = \qty{15}{\hertz}$, $A_{\text{stop}} = \qty{25}{\deci\bel}$.
+\end{enumerate}
+\end{consigna}
+
+\subsection{Requerimientos}
+
+De la consigna se desprenden los siguientes requerimientos, que se usan como
+guía para el diseño y como lista de verificación en la
+sección~\ref{sec:verificacion}:
+
+\begin{enumerate}[label=\textbf{R\arabic*},leftmargin=2.2em]
+  \item \label{req:fs} Adquirir la señal con la aplicación del
+        Laboratorio~1, a \qtylist{8;16;22;44;48}{\kilo\sps}, en un buffer de
+        512 muestras.
+  \item \label{req:diseno} Diseñar, para cada frecuencia de muestreo, filtros
+        FIR que cumplan las especificaciones \ref{filtro:pb} a
+        \ref{filtro:eb}.
+  \item \label{req:cmsis} Aplicar el filtro por muestras al buffer de
+        entrada, escribiendo el resultado en un buffer de salida distinto.
+  \item \label{req:tecla-filtro} Con una tecla, habilitar el filtro o hacer
+        \emph{bypass} del buffer de entrada al de salida.
+  \item \label{req:dac} Enviar las muestras del buffer de salida al DAC.
+  \item \label{req:osc} Visualizar la entrada y la salida con un osciloscopio
+        y comparar los resultados.
+\end{enumerate}
+
+\begin{nota}[Diferencias respecto de la consigna]
+La consigna pide aplicar un filtro y, con una tecla, habilitarlo o hacer
+\emph{bypass} a un buffer de salida. La implementación:
+\begin{itemize}[nosep]
+  \item recorre con SW2 los cuatro filtros \ref{filtro:pb}--\ref{filtro:eb},
+        para compararlos sobre la misma señal sin reprogramar la placa;
+  \item habilita o deshabilita el filtro con el touchpad capacitivo E1 de la
+        placa en lugar de un pulsador; en \emph{bypass} copia la muestra de
+        entrada al buffer de salida, del que el DAC lee siempre;
+  \item indica el filtro activo con el parpadeo del LED
+        (sección~\ref{sec:habilitacion});
+  \item implementa el PA, el PBanda y el EB con una estructura multitasa
+        (sección~\ref{sec:multitasa}): siguen siendo FIR y se procesan
+        muestra a muestra, pero no como un único FIR directo.
+\end{itemize}
+El filtrado trabaja en q15, con el mismo formato del buffer del
+Laboratorio~1: \texttt{arm\_fir\_q15()} de CMSIS-DSP para el PB, el LPB y
+los filtros $G$, y código propio para el diezmador y el interpolador.
+\end{nota}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Configuración del ambiente}\label{sec:ambiente}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Herramientas utilizadas}
+
+\begin{table}[H]
+\centering
+\caption{Hardware y software del entorno de trabajo.}
+\label{tab:herramientas}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{Elemento} & \textbf{Versión / modelo}\\
+\midrule
+Placa de evaluación     & FRDM-MCXN947 (Cortex-M33, núcleo \texttt{cm33\_core0})\\
+IDE                     & MCUXpresso IDE v25.6.136\\
+SDK                     & \texttt{SDK\_26.06.00\_FRDM-MCXN947}\\
+Herramientas de config. & MCUXpresso Config Tools (Clocks, Pins, Peripherals)\\
+Proyecto base           & Proyecto del Laboratorio 1 (\archivo{TP1})\\
+Bibliotecas             & Drivers del SDK (incluido \texttt{fsl\_tsi\_v6}) y CMSIS-DSP (\texttt{arm\_fir\_q15})\\
+Diseño de filtros       & MATLAB R2023a (9.14.0.2206163), \texttt{firpm}, \texttt{fdatool}\\
+Generador de señales    & \\
+Osciloscopio            & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Creación del proyecto}
+
+El proyecto \archivo{TP2} parte del proyecto del Laboratorio 1: conserva la
+cadena CTIMER0 $\rightarrow$ INPUTMUX $\rightarrow$ LPADC0 $\rightarrow$ DAC0,
+la selección circular de la frecuencia de muestreo y la indicación con el LED.
+Sobre esa base:
+
+\begin{enumerate}[nosep]
+  \item Se agregó al proyecto el código fuente de CMSIS-DSP (carpeta
+        \archivo{CMSIS/DSP}) para disponer de \texttt{arm\_fir\_init\_q15()} y
+        \texttt{arm\_fir\_q15()}.
+  \item Los filtros se diseñaron en MATLAB con el script
+        \archivo{disenar_multitasa.m}, que escribe los coeficientes y los
+        parámetros de la estructura multitasa en el archivo de cabecera
+        \archivo{source/filtros_multitasa.h} (sección~\ref{sec:filtros}). La
+        implementación previa usaba \texttt{fdatool} y el script
+        \archivo{generar_filtros.m}, que generaba \archivo{source/filtros.h}
+        (sección~\ref{sec:previa}).
+  \item Se agregó el componente \texttt{tsi\_v6} del SDK (\emph{Manage SDK
+        Components}), con el driver \archivo{fsl_tsi_v6}, para leer el
+        touchpad de la placa.
+  \item La lógica de la aplicación se escribió en \archivo{source/TP2.c}.
+  \item La depuración se hace con el MCU-Link integrado de la placa, con la
+        configuración guardada en \archivo{TP2 LinkServer Debug.launch}.
+\end{enumerate}
+
+\begin{nota}[Agregar componentes del SDK reemplaza los archivos de la placa]
+Al agregar el componente \texttt{tsi\_v6}, MCUXpresso reemplazó los archivos
+generados de \archivo{board/} (\archivo{pin_mux}, \archivo{clock_config} y
+\archivo{peripherals}) por los de la plantilla de la placa: desaparecieron
+las inicializaciones del CTIMER0, el LPADC0, el DAC0 y los GPIO. La
+configuración no se pierde, porque está en \archivo{TP2.mex}; basta volver a
+generar el código desde Config Tools (\emph{Update Code}). Conviene revisar
+los cambios de \archivo{board/} antes de compilar después de agregar un
+componente.
+\end{nota}
+
+\subsection{Relojes y pines}
+
+Los relojes y la asignación de pines son los mismos del Laboratorio 1 (PLL0 a
+\qty{150}{\mega\hertz} para el núcleo y el CTIMER0, FRO\_HF de
+\qty{48}{\mega\hertz} para el ADC0 y el DAC0). La tabla~\ref{tab:pines} los
+resume; las capturas de Config Tools están en el informe del Laboratorio 1.
+
+\begin{table}[H]
+\centering
+\caption{Asignación de pines (sin cambios respecto del Laboratorio 1, salvo
+la función de SW2).}
+\label{tab:pines}
+\small
+\begin{tabular}{@{}l l l l@{}}
+\toprule
+\textbf{Función} & \textbf{Pin} & \textbf{Periférico} & \textbf{Conector / observación}\\
+\midrule
+Entrada analógica          & \pin{ADC0\_A0}          & LPADC0 canal A0    & \texttt{J4[2]} (Arduino A0), \qtyrange{0}{3.3}{\volt}\\
+Salida analógica           & \pin{P4\_2}             & DAC0\_OUT          & \texttt{J1[4]}\\
+Disparo del ADC            & \pin{P0\_19}            & CT0\_MAT3          & \texttt{J2[13]}, punto de prueba\\
+LED rojo / verde / azul    & \pin{P0\_10}, \pin{P0\_27}, \pin{P1\_2} & GPIO0, GPIO1 & Activos en bajo\\
+Tecla SW3 (velocidad)      & \pin{P0\_6}             & GPIO0, canal IRQ 0 & Flanco descendente, pull-up interno\\
+Tecla SW2 (filtro)         & \pin{P0\_23}            & GPIO0, canal IRQ 1 & Flanco descendente\\
+Touchpad E1 (filtrado)     & \pin{P1\_3}             & TSI0, canal 3      & Self-cap, disparo por software\\
+Medición de la ISR         & \pin{P0\_26}            & GPIO0, salida      & \texttt{J2[10]}, en 1 durante la ISR del ADC\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cambios en los periféricos}\label{sec:cambios-perif}
+
+La tabla~\ref{tab:cambios} resume lo que cambió respecto del Laboratorio 1.
+El resto de la configuración (CTIMER0 en modo toggle sobre el match 3,
+disparo del ADC por INPUTMUX, interrupciones de las teclas en las líneas 0
+y 1 del GPIO0) se mantiene.
+
+\begin{table}[H]
+\centering
+\caption{Diferencias de configuración respecto del Laboratorio 1.}
+\label{tab:cambios}
+\footnotesize
+\begin{tabular}{@{}l p{5.0cm} p{6.4cm}@{}}
+\toprule
+\textbf{Elemento} & \textbf{Laboratorio 1} & \textbf{Laboratorio 2}\\
+\midrule
+Referencia del LPADC0 & \texttt{kLPADC\_ReferenceVoltageAlt1}
+                      & \texttt{kLPADC\_ReferenceVoltageAlt3}\\
+Calibración del ADC   & En \texttt{main()}
+                      & En \texttt{ADC0\_init()} (generado por Config Tools)\\
+Referencia del DAC0   & \texttt{kDAC\_ReferenceVoltageSourceAlt3}
+                      & \texttt{kDAC\_ReferenceVoltageSourceAlt1}, como el
+                        ejemplo \texttt{dac\_basic} del SDK\\
+Inicialización del DAC0 & Config Tools
+                      & \texttt{init\_dac()} antes de
+                        \texttt{BOARD\_InitBootPeripherals()}\\
+Tecla SW2             & Run/Stop & Selección de filtro (PB, PA, PBanda, EB)\\
+Habilitación del filtro & ---
+                      & Touchpad E1 (TSI0, canal 3, \pin{P1\_3}), leído
+                        desde el lazo principal. Pin y reloj del TSI
+                        (FRO de \qty{12}{\mega\hertz}) en Config Tools\\
+LED RGB               & Color según la $f_s$
+                      & Color según la $f_s$; parpadeo según el filtro, fijo
+                        con la salida sin filtrar\\
+Lazo principal        & Vacío    & Lee el touchpad y controla el LED, con una
+                                   base de tiempo de \qty{1}{\milli\second}
+                                   (SysTick)\\
+Pin de medición       & ---      & \pin{P0\_26} en 1 mientras se ejecuta la
+                                   rutina del ADC (\texttt{MEDIR\_TIEMPO\_ISR})\\
+Buffers               & \texttt{samples[512]}
+                      & \texttt{buffer\_in[512]} y \texttt{buffer\_out[512]}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El LPADC0 trabaja en resolución alta (\qty{16}{\bit}), así que su resultado,
+centrado en cero, ocupa directamente todo el rango de un \texttt{q15\_t}
+(sección~\ref{sec:q15}).
+
+\captura{img/peripherals-lpadc-tp2.png}{Config Tools \textemdash{} ADC0}{Comando
+de conversión del LPADC0 en resolución alta (\qty{16}{\bit}).}{fig:lpadc}
+
+\subsubsection{Orden de inicialización}
+
+\texttt{BOARD\_InitBootPeripherals()} arranca el CTIMER0 y habilita la
+interrupción del ADC0, así que a partir de ese momento la rutina del ADC
+empieza a ejecutarse y a escribir en el DAC. Por eso \texttt{main()} llama a
+\texttt{init\_dac()} (reloj, alimentación desde el SPC e inicialización del
+DAC0) \emph{antes} de inicializar los periféricos. Los filtros, en cambio, se
+inicializan después: mientras \texttt{filtros\_listos} sea falso, la rutina
+del ADC hace \emph{bypass}, es decir, copia la muestra al buffer de salida
+sin filtrarla.
+
+\subsubsection{Prioridades de interrupción}
+
+Igual que en el Laboratorio 1, las tres interrupciones (\texttt{ADC0\_IRQn},
+\texttt{GPIO00\_IRQn} y \texttt{GPIO01\_IRQn}) quedan con la prioridad por
+defecto (0), así que ninguna desaloja a otra. Esto es lo que permite que el
+cambio de filtro se aplique de forma segura (sección~\ref{sec:cambio-filtro}).
+A diferencia del Laboratorio 1, la rutina del ADC ahora puede ser larga
+(ejecuta el filtro completo), y su duración frente al período de muestreo se
+analiza en la sección~\ref{sec:carga}. El SysTick, que sólo cuenta
+milisegundos para el touchpad y el LED (sección~\ref{sec:habilitacion}),
+queda con la prioridad mínima, así que nunca demora a la rutina del ADC.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Diseño de los filtros}\label{sec:filtros}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Especificaciones}
+
+Un filtro FIR de $N$ coeficientes calcula cada muestra de salida como
+\begin{equation}
+  y[n] = \sum_{k=0}^{N-1} b_k\, x[n-k].
+  \label{eq:fir}
+\end{equation}
+Con coeficientes simétricos ($b_k = b_{N-1-k}$) la fase es lineal y todas las
+frecuencias sufren el mismo retardo de grupo,
+\begin{equation}
+  \tau_g = \frac{N-1}{2\,f_s}.
+  \label{eq:retardo}
+\end{equation}
+
+La consigna fija, para cada filtro, la frecuencia de corte (o la frecuencia
+central y el ancho de banda, en el EB) y la atenuación mínima en la banda de
+rechazo, pero no el ancho de la banda de transición ni el rizado admitido en
+la banda de paso. Un filtro no queda definido sin esos dos datos, así que se
+eligieron al diseñar. La tabla~\ref{tab:specs} muestra ambas partes. En todos
+los casos se fijó $A_{\text{pass}} = \qty{1}{\deci\bel}$ (pico a pico) y se
+tomó $A_{\text{stop}}$ igual a la pedida.
+
+\begin{table}[H]
+\centering
+\caption{Especificaciones de los filtros: lo que fija la consigna y los
+bordes elegidos. Las mismas bandas, en hertz, se usaron para las cinco
+$f_s$.}
+\label{tab:specs}
+\small
+\begin{tabular}{@{}l l l c c@{}}
+\toprule
+& \multicolumn{1}{c}{\textbf{Consigna}} &
+  \multicolumn{3}{c}{\textbf{Diseño}}\\
+\cmidrule(lr){2-2}\cmidrule(l){3-5}
+\textbf{Filtro} & \textbf{Bordes} &
+\textbf{Bordes [Hz]} & \textbf{$A_{\text{pass}}$} & \textbf{$A_{\text{stop}}$}\\
+\midrule
+\ref{filtro:pb} PB         & $f_c = \qty{3600}{\hertz}$
+                           & $f_{\text{pass}} = 3500$, $f_{\text{stop}} = 3700$
+                           & \qty{1}{\deci\bel} & \qty{30}{\deci\bel}\\
+\ref{filtro:pa} PA         & $f_c = \qty{35}{\hertz}$
+                           & $f_{\text{stop}} = 20$, $f_{\text{pass}} = 50$
+                           & \qty{1}{\deci\bel} & \qty{30}{\deci\bel}\\
+\ref{filtro:pbanda} PBanda & \qtyrange{35}{3500}{\hertz}
+                           & \begin{tabular}[c]{@{}l@{}}$f_{\text{stop1}} = 20$, $f_{\text{pass1}} = 50$\\
+                             $f_{\text{pass2}} = 3400$, $f_{\text{stop2}} = 3600$\end{tabular}
+                           & \qty{1}{\deci\bel} & \qty{30}{\deci\bel}\\
+\ref{filtro:eb} EB         & \qty{50}{\hertz}, $BW = \qty{15}{\hertz}$
+                           & \begin{tabular}[c]{@{}l@{}}$f_{\text{pass1}} = 35$, $f_{\text{stop1}} = 42{,}5$\\
+                             $f_{\text{stop2}} = 57{,}5$, $f_{\text{pass2}} = 65$\end{tabular}
+                           & \qty{1}{\deci\bel} & \qty{25}{\deci\bel}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los bordes se ubicaron con un mismo criterio: la frecuencia de corte de la
+consigna queda en el centro de la banda de transición, que es donde un FIR
+de fase lineal con rizado chico cruza aproximadamente la mitad de la
+amplitud (\qty{-6}{\deci\bel}).
+\begin{itemize}[nosep]
+  \item En el PB, \qty{3600}{\hertz} queda en el centro de la transición de
+        \qtyrange{3500}{3700}{\hertz}.
+  \item En el PA y en el flanco inferior del PBanda, \qty{35}{\hertz} queda
+        en el centro de \qtyrange{20}{50}{\hertz}. En el flanco superior del
+        PBanda, \qty{3500}{\hertz} queda en el centro de
+        \qtyrange{3400}{3600}{\hertz}.
+  \item En el EB, la banda de rechazo es exactamente la de la consigna,
+        $\qty{50}{\hertz} \pm \qty{7.5}{\hertz}$, con transiciones de
+        \qty{7.5}{\hertz} a cada lado.
+\end{itemize}
+En la implementación previa (sección~\ref{sec:previa}) la banda de paso del
+PA y del PBanda empezaba exactamente en \qty{35}{\hertz}, con la transición
+en \qtyrange{20}{35}{\hertz}, y el flanco superior del PBanda usaba la misma
+transición que el PB. Esa transición de \qty{15}{\hertz} duplicaba el orden
+de esos filtros respecto de la actual.
+
+\subsection{Métodos de diseño}\label{sec:metodos}
+
+Un filtro FIR se puede diseñar por cuatro familias de métodos: por ventanas, por
+suavizado de la banda de transición, por muestreo en frecuencia y por métodos
+óptimos (los algoritmos de Parks-McClellan y de Remez). En este trabajo se usó
+el primero. Su punto de partida es la respuesta impulsional del filtro ideal,
+una función sinc de duración infinita. Si simplemente se la trunca a $N$
+coeficientes, equivale a multiplicarla por una ventana rectangular, y en
+frecuencia eso convoluciona la respuesta ideal con la transformada de esa
+ventana: aparece el efecto Gibbs, un rizado que no disminuye aunque se agreguen
+coeficientes, y una atenuación de rechazo de sólo unos
+\qty{21}{\deci\bel}. Multiplicar por una ventana que decae suavemente hacia los
+extremos elimina el corte abrupto y baja el rizado, a cambio de ensanchar la
+banda de transición. La elección de la ventana fija entonces ese compromiso.
+
+En la implementación previa los cuatro filtros se diseñaron por el método de
+ventaneo con ventana de Kaiser: se trunca la respuesta impulsional ideal del filtro y se la multiplica
+por una ventana cuyo parámetro $\beta$ regula el compromiso entre la
+atenuación en la banda de rechazo y el ancho de la transición. Una
+característica del método es que el rizado resulta igual en las dos bandas,
+$\delta = \min(\delta_p, \delta_s)$, con
+\begin{equation}
+  \delta_p = \frac{10^{A_{\text{pass}}/20} - 1}{10^{A_{\text{pass}}/20} + 1}
+           \approx 0{,}0575,
+  \qquad
+  \delta_s = 10^{-A_{\text{stop}}/20}.
+\end{equation}
+Con $A_{\text{stop}} = \qty{30}{\deci\bel}$, $\delta_s \approx 0{,}0316$ es
+el más restrictivo, así que el rizado real de la banda de paso es de
+\qty{0.55}{\deci\bel}, mejor que el \qty{1}{\deci\bel} pedido. En el EB
+($A_{\text{stop}} = \qty{25}{\deci\bel}$, $\delta_s \approx 0{,}0562$) los dos
+valores casi coinciden y el rizado de paso queda en \qty{0.98}{\deci\bel}. La
+atenuación de diseño es $A = -20\log_{10}\delta$ y el parámetro de la ventana
+resulta $\beta \approx 2{,}12$ para \qty{30}{\deci\bel} y
+$\beta \approx 1{,}33$ para \qty{25}{\deci\bel}.
+
+El orden $M$ que requiere la ventana de Kaiser se estima con
+\begin{equation}
+  M \approx \frac{A - 8}{2{,}285\;\Delta\omega},
+  \qquad \Delta\omega = \frac{2\pi\,\Delta f}{f_s},
+  \label{eq:kaiser}
+\end{equation}
+donde $\Delta f$ es la banda de transición más angosta del filtro. La
+ecuación~\eqref{eq:kaiser} se usa en la sección~\ref{sec:previa} para
+explicar la cantidad de coeficientes de cada filtro.
+
+Como regla práctica, la teoría estima la longitud como $M \approx 4/BW$, con $BW$
+la banda de transición normalizada a $f_s$, medida entre el \qty{99}{\percent}
+de la banda de paso y el \qty{1}{\percent} de la de rechazo. Es la misma
+proporcionalidad inversa con la transición que contiene la
+ecuación~\eqref{eq:kaiser}, sólo que sin depender de la atenuación. Esos
+márgenes de \qty{1}{\percent} corresponden a unos \qty{40}{\deci\bel}, más
+exigentes que los \qtyrange{25}{30}{\deci\bel} pedidos, por eso la regla
+sobrestima: para el PA de la implementación previa a \qty{8}{\kilo\sps}
+(transición de \qty{15}{\hertz}, $BW = 15/8000$) da unos \num{2133}
+coeficientes, frente a los 822 de la ecuación~\eqref{eq:kaiser}.
+
+\paragraph{Comparación con otras ventanas.} Entre los métodos de ventaneo, las
+ventanas fijas tienen una atenuación en la banda de rechazo determinada por su
+forma y no ajustable: el diseñador sólo elige la cantidad de coeficientes. Con
+los valores de la tabla de ventanas de la cátedra (tabla~\ref{tab:ventanas}), el error de aproximación
+pico es de \qty{-21}{\deci\bel} para la rectangular, \qty{-25}{\deci\bel} para
+la triangular, \qty{-44}{\deci\bel} para la de Hann, \qty{-53}{\deci\bel} para
+la de Hamming y \qty{-74}{\deci\bel} para la de Blackman, con anchos de
+transición equivalentes de $1{,}81\pi/N$, $2{,}37\pi/N$, $5{,}01\pi/N$,
+$6{,}27\pi/N$ y $9{,}19\pi/N$. Con las especificaciones de este trabajo
+(\qty{30}{\deci\bel} en el PB, el PA y el PBanda, y \qty{25}{\deci\bel} en el
+EB) la rectangular no alcanza, y las de Hann, Hamming y Blackman cumplen con un
+exceso de atenuación que se paga en ancho de transición. Para $A =
+\qty{30}{\deci\bel}$, la ecuación~\eqref{eq:kaiser} da $M \approx
+9{,}6/\Delta\omega$, mientras que Hann necesitaría $\approx 15{,}7/\Delta\omega$,
+Hamming $\approx 19{,}7/\Delta\omega$ y Blackman $\approx 28{,}9/\Delta\omega$:
+$1{,}6$, $2{,}0$ y $3{,}0$ veces más coeficientes, lo que es
+crítico cuando el EB a \qty{48}{\kilo\sps} ya necesita \num{7604}. El único
+caso en que una ventana fija coincide con Kaiser es el del EB: la triangular
+($\approx 7{,}4/\Delta\omega$) equivale a Kaiser con $\beta = 1{,}33$, el valor
+que resulta para \qty{25}{\deci\bel}, pero con margen nulo, y no existe una
+ventana fija equivalente para los \qty{30}{\deci\bel} del resto. La ventana de
+Kaiser evita ese problema porque el parámetro $\beta$ ajusta la atenuación al
+valor pedido, y además tiene una fórmula cerrada para estimar el orden a partir
+de $A$ y $\Delta\omega$, lo que permite prever la cantidad de coeficientes y la
+carga de CPU antes de diseñar el filtro.
+
+\begin{table}[H]
+\centering
+\caption{Ventanas fijas frente a Kaiser (valores de la tabla de ventanas de la
+cátedra). La última columna es la cantidad de coeficientes respecto de Kaiser
+para $A = \qty{30}{\deci\bel}$.}
+\label{tab:ventanas}
+\begin{tabular}{@{}l c r r c r r@{}}
+\toprule
+\textbf{Ventana} & \textbf{Lóbulo} & \textbf{Lóbulo} & \textbf{Atenuación} &
+\textbf{$\beta$} & \textbf{Transición} & \textbf{Coef.}\\
+ & \textbf{principal} & \textbf{lateral [dB]} & \textbf{[dB]} &
+\textbf{equiv.} & \textbf{equiv.} & \textbf{vs.\ Kaiser}\\
+\midrule
+Rectangular & $4\pi/N$  & $-13$ & $-21$ & 0    & $1{,}81\pi/N$ & no cumple\\
+Triangular  & $8\pi/N$  & $-27$ & $-25$ & 1,33 & $2{,}37\pi/N$ & no cumple\\
+Hann        & $8\pi/N$  & $-32$ & $-44$ & 3,86 & $5{,}01\pi/N$ & $1{,}6\times$\\
+Hamming     & $8\pi/N$  & $-43$ & $-53$ & 4,86 & $6{,}27\pi/N$ & $2{,}0\times$\\
+Blackman    & $12\pi/N$ & $-58$ & $-74$ & 7,04 & $9{,}19\pi/N$ & $3{,}0\times$\\
+Kaiser ($A = \qty{30}{\deci\bel}$) & --- & --- & $-30$ & 2,12 & $3{,}07\pi/N$ & $1{,}0\times$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Comparación con el diseño equiripple.} La alternativa habitual,
+y la que \texttt{fdatool} propone por defecto, es el diseño equiripple por el
+algoritmo de Parks-McClellan. Ese método distribuye el error según la
+tolerancia de cada banda en lugar de imponer el mismo rizado en ambas, así
+que aprovecha la holgura de $A_{\text{pass}} = \qty{1}{\deci\bel}$ que la
+ventana de Kaiser desperdicia. Su orden se puede estimar con la fórmula de
+Kaiser para filtros óptimos,
+\begin{equation}
+  M_{\text{eq}} \approx
+  \frac{-20\log_{10}\sqrt{\delta_p\,\delta_s} - 13}{14{,}6\;\Delta f/f_s},
+  \label{eq:equiripple}
+\end{equation}
+pero es sólo una estimación (la misma que usa \texttt{firpmord} y, con ella,
+la opción \emph{Minimum order} de \texttt{fdatool}) y puede quedar corta. El
+orden mínimo real se obtiene diseñando e iterando. Con los bordes de la
+tabla~\ref{tab:specs}, a \qty{8}{\kilo\sps} el diseño equiripple necesita un
+orden de 48, 314 y \num{1104} para el PB, el PA (y el PBanda) y el EB, frente
+a 62, 409 y \num{1263} con la ventana de Kaiser: entre un \qty{13}{\percent}
+y un \qty{23}{\percent} menos, en la misma proporción para todas las $f_s$.
+
+En la implementación previa se eligió la ventana de Kaiser por su robustez
+con filtros muy largos. El diseño por ventana es directo: se calcula la
+respuesta impulsional ideal y se la multiplica por la ventana, sin ningún
+proceso iterativo. Parks-McClellan, en cambio, es un algoritmo iterativo que,
+con órdenes de varios miles como los que se necesitan a las $f_s$ altas
+(hasta \num{7604} coeficientes en el EB a \qty{48}{\kilo\sps}), puede no
+converger o dar resultados numéricamente imprecisos. De hecho,
+\texttt{fdatool} devolvía coeficientes no finitos con esos órdenes, y para
+obtener los FIR directos equiripple de la sección~\ref{sec:previa} hubo que
+programar el algoritmo de Remez en un script propio. Ese diseño confirmó que
+el método no es la causa de fondo de la carga de CPU: el ahorro frente a
+Kaiser no alcanza para que el PA, el PBanda y el EB entren en tiempo real a
+las $f_s$ altas.
+
+En la implementación multitasa (sección~\ref{sec:multitasa}) el argumento de
+la robustez desaparece: ningún bloque supera los 340 coeficientes, un orden
+en el que Parks-McClellan converge sin problemas (\texttt{firpm} de MATLAB).
+Por eso todos los bloques se diseñaron por equiripple, con el orden mínimo
+que cumple la especificación con los coeficientes ya cuantizados a q15.
+
+Como el ADC puede muestrear a cinco velocidades, cada filtro tiene que tener
+la misma respuesta en frecuencia analógica cualquiera sea la velocidad
+activa, así que se diseña para cada $f_s$ con las mismas bandas expresadas
+en hertz. En la implementación previa eso significó diseñar los 20 filtros,
+y al aumentar $f_s$ la banda de transición ocupa una fracción menor del
+rango $[0,\, f_s/2]$ y el orden necesario crece
+(sección~\ref{sec:taps-previa}). En la implementación multitasa sólo se
+rediseñan para cada $f_s$ los bloques que trabajan a esa tasa; los filtros
+angostos se diseñan una sola vez.
+
+\subsection{Implementación previa: un FIR directo por velocidad}\label{sec:previa}
+
+La primera implementación calculaba cada uno de los 20 filtros como un FIR
+directo (ecuación~\eqref{eq:fir}) a su propia $f_s$, con
+\texttt{arm\_fir\_q15()}. Los filtros se diseñaron en \texttt{fdatool} por
+ventana de Kaiser, con los bordes anteriores del PA y del PBanda (transición
+de \qtyrange{20}{35}{\hertz}). Las figuras~\ref{fig:fda-pb}
+a~\ref{fig:fda-eb} muestran los diseñados para \qty{8}{\kilo\sps}.
+
+\captura[0.3\textheight]{img/fda-pb-8k.png}{fdatool}{Respuesta en magnitud
+del filtro pasa bajos para $f_s = \qty{8}{\kilo\sps}$ (implementación
+previa).}{fig:fda-pb}
+
+\captura[0.3\textheight]{img/fda-pa-8k.png}{fdatool}{Respuesta en magnitud
+del filtro pasa altos para $f_s = \qty{8}{\kilo\sps}$ (implementación
+previa).}{fig:fda-pa}
+
+\captura[0.3\textheight]{img/fda-pbanda-8k.png}{fdatool}{Respuesta en
+magnitud del filtro pasa banda para $f_s = \qty{8}{\kilo\sps}$
+(implementación previa).}{fig:fda-pbanda}
+
+\captura[0.3\textheight]{img/fda-eb-8k.png}{fdatool}{Respuesta en magnitud
+del filtro elimina banda para $f_s = \qty{8}{\kilo\sps}$ (implementación
+previa).}{fig:fda-eb}
+
+\subsubsection{Generación de los coeficientes}
+
+Los coeficientes de cada filtro se exportaron desde \texttt{fdatool} al
+\emph{workspace} de MATLAB (\emph{File} $\rightarrow$ \emph{Export},
+como \emph{Coefficients}) con el nombre \texttt{<tipo>\_<fs>}, por ejemplo
+\texttt{PB\_8k} o \texttt{EB\_48k}. El script \archivo{generar_filtros.m}
+toma las 20 variables y, para cada una:
+
+\begin{enumerate}[nosep]
+  \item Si algún coeficiente alcanza $|b_k| \ge 1$ (que no se puede
+        representar en q15), escala todo el filtro para que el mayor quede en
+        $32767/32768$. La variación de ganancia es menor a \qty{0.01}{\deci\bel}.
+  \item Cuantiza a q15: $b_k^{q15} = \operatorname{round}\!\left(2^{15}\, b_k\right)$.
+  \item Invierte el orden de los coeficientes, porque CMSIS-DSP los espera
+        como $\{b_{N-1}, \dots, b_1, b_0\}$. En un filtro simétrico la
+        inversión no cambia nada, pero el script no depende de eso.
+  \item Si $N$ es impar agrega un coeficiente nulo, porque
+        \texttt{arm\_fir\_init\_q15()} exige un número par de coeficientes
+        mayor o igual a 4. Como el arreglo está invertido, ese cero queda
+        como nuevo $b_0$: no modifica la respuesta en magnitud y sólo agrega
+        una muestra de retardo.
+  \item Escribe los arreglos \texttt{static const q15\_t} en el archivo de
+        cabecera, junto con dos tablas indexadas por $[f_s][\text{tipo}]$:
+        \texttt{coef\_tabla} (punteros a los coeficientes) y
+        \texttt{taps\_tabla} (cantidad de coeficientes). También define
+        \texttt{MAX\_TAPS}, el largo del filtro más largo.
+\end{enumerate}
+
+El script además imprime una estimación de la carga de CPU de cada filtro,
+que se analiza en la sección~\ref{sec:carga}. El archivo generado
+(\archivo{FiltrosTP2.h}) se incorporó al proyecto como
+\archivo{source/filtros.h}.
+
+\subsubsection{Cantidad de coeficientes y memoria}\label{sec:taps-previa}
+
+\begin{table}[H]
+\centering
+\caption{Cantidad de coeficientes de cada filtro (después del relleno a un
+número par), tomada de \texttt{taps\_tabla} en \texttt{source/filtros.h}.}
+\label{tab:taps}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{PB} & \textbf{PA} & \textbf{PBanda} & \textbf{EB} & \textbf{Total}\\
+\midrule
+\filataps{8000} {64} {822} {822} {1270}
+\filataps{16000}{124}{1642}{1640}{2536}
+\filataps{22000}{170}{2256}{2254}{3486}
+\filataps{44000}{340}{4508}{4508}{6970}
+\filataps{48000}{370}{4918}{4916}{7604}
+\midrule
+\multicolumn{5}{@{}l}{\textbf{Total}} & \num{51220}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Se observan dos cosas:
+
+\begin{itemize}
+  \item La cantidad de coeficientes crece casi en proporción a $f_s$ (por
+        ejemplo, el EB pasa de \num{1270} coeficientes a \qty{8}{\kilo\sps} a
+        \num{7604} a \qty{48}{\kilo\sps}, unas 6 veces, igual que la relación
+        entre las frecuencias de muestreo). Es lo esperable al mantener fijas
+        las bandas en hertz: el ancho de transición normalizado
+        $\Delta f / f_s$ se achica en la misma proporción y el orden de un FIR
+        es inversamente proporcional a ese ancho.
+  \item El PB es mucho más corto que los otros tres filtros, aunque su
+        atenuación es la misma que la del PA y el PBanda. La diferencia está
+        en el ancho de la banda de transición, como se explica a
+        continuación.
+\end{itemize}
+
+La ecuación~\eqref{eq:kaiser} explica esa diferencia. La transición más
+angosta de cada filtro, con los bordes de la implementación previa, es de \qty{200}{\hertz} en el
+PB, \qty{15}{\hertz} en el PA y el PBanda (de \qtyrange{20}{35}{\hertz}) y
+\qty{7.5}{\hertz} en el EB. La tabla~\ref{tab:kaiser} compara el orden que
+predice la fórmula con la cantidad de coeficientes implementada, que es
+$M + 1$ más el eventual cero de relleno.
+
+\begin{table}[H]
+\centering
+\caption{Orden estimado con la ecuación~\eqref{eq:kaiser} y cantidad de
+coeficientes implementada, a la menor y a la mayor $f_s$.}
+\label{tab:kaiser}
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+& & & \multicolumn{2}{c}{\textbf{\qty{8}{\kilo\sps}}} &
+      \multicolumn{2}{c}{\textbf{\qty{48}{\kilo\sps}}}\\
+\cmidrule(lr){4-5}\cmidrule(l){6-7}
+\textbf{Filtro} & \textbf{$\Delta f$} & \textbf{$A$} &
+\textbf{$M$ estimado} & \textbf{$N$ impl.} &
+\textbf{$M$ estimado} & \textbf{$N$ impl.}\\
+\midrule
+\filakaiser{PB}    {30}{200}{64}  {370}
+\filakaiser{PA}    {30}{15} {822} {4918}
+\filakaiser{PBanda}{30}{15} {822} {4916}
+\filakaiser{EB}    {25}{7.5}{1270}{7604}
+\bottomrule
+\end{tabular}
+\end{table}
+
+La estimación coincide con lo implementado con un error menor al
+\qty{1}{\percent} en todos los casos, lo que confirma que los filtros de la
+implementación previa tenían esos bordes y que se usaron las mismas bandas en
+hertz para todas las $f_s$.
+
+La explicación de fondo está en dónde caen los bordes. El PB tiene su
+transición en \qtyrange{3500}{3700}{\hertz} y puede ser de
+\qty{200}{\hertz}. En cambio, el PA y el flanco inferior del PBanda pasan de
+rechazo a paso entre \qty{20}{\hertz} y \qty{35}{\hertz}, y el EB tiene que
+entrar y salir de una banda de rechazo de \qty{15}{\hertz} con transiciones
+de \qty{7.5}{\hertz}. Según la ecuación~\eqref{eq:kaiser}, $M$ es
+proporcional a $f_s/\Delta f$: una transición de unos pocos hertz con $f_s$
+de miles de hertz requiere miles de coeficientes. Ese es el origen de la
+carga de CPU que se analiza en la sección~\ref{sec:carga}.
+
+A \qty{8}{\kilo\sps} el PB tiene además una particularidad: la frecuencia de
+Nyquist es \qty{4000}{\hertz} y la banda de rechazo empieza en
+\qty{3700}{\hertz}, así que sólo atenúa los últimos \qty{300}{\hertz} del
+espectro representable. A esa $f_s$, su efecto sobre una señal de prueba es
+pequeño y se observa recién por encima de \qty{3.5}{\kilo\hertz}.
+
+Los \num{51220} coeficientes ocupan \num{102440} bytes (unos 100~KiB) de memoria flash, una fracción chica de los 2~MB del
+MCXN947. En RAM sólo hace falta un buffer de estado de
+$\texttt{MAX\_TAPS} + 1 = \num{7605}$ muestras (\num{15210} bytes), compartido
+por todos los filtros.
+
+Con la ecuación~\eqref{eq:retardo}, el retardo de grupo resulta casi igual
+para todas las $f_s$, porque $N$ crece en la misma proporción que $f_s$. El
+filtro más largo, el EB, retrasaba la señal unos
+$\num{1269}/(2\cdot\qty{8}{\kilo\hertz}) \approx \qty{79}{\milli\second}$.
+
+\subsubsection{Diseño equiripple de orden mínimo}\label{sec:equiripple-directo}
+
+Para separar el efecto del método de diseño del de la estructura, los 20
+filtros directos se rediseñaron por equiripple con el script
+\archivo{disenar_PB_PA.m}, ya con los bordes de la tabla~\ref{tab:specs}.
+El script implementa el algoritmo de Remez y, para cada filtro, busca el
+menor orden que cumple la especificación con los coeficientes ya
+cuantizados a q15. La tabla~\ref{tab:taps-eq} muestra el resultado. Parte de
+la reducción respecto de la tabla~\ref{tab:taps} se debe a los bordes (la
+transición del PA y del PBanda pasó de \qty{15}{\hertz} a
+\qty{30}{\hertz}); con los mismos bordes, el ahorro del método equiripple
+frente a Kaiser es de un \qtyrange{13}{23}{\percent}
+(sección~\ref{sec:metodos}).
+
+\begin{table}[H]
+\centering
+\caption{Cantidad de coeficientes de los FIR directos equiripple de orden
+mínimo (\archivo{disenar_PB_PA.m}), después del relleno a un número par.}
+\label{tab:taps-eq}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{PB} & \textbf{PA} & \textbf{PBanda} & \textbf{EB} & \textbf{Total}\\
+\midrule
+\filataps{8000} {50} {318} {316} {1108}
+\filataps{16000}{94} {632} {634} {2216}
+\filataps{22000}{128}{870} {872} {3048}
+\filataps{44000}{256}{1744}{1746}{6124}
+\filataps{48000}{278}{1902}{1904}{6680}
+\midrule
+\multicolumn{5}{@{}l}{\textbf{Total}} & \num{30920}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Por qué el FIR directo no alcanza}\label{sec:limites-directo}
+
+Aun con el orden mínimo, el FIR directo tiene tres problemas que no dependen
+del método de diseño:
+\begin{itemize}
+  \item \textbf{Carga de CPU.} Como $N \propto f_s/\Delta f$ y el filtro se
+        calcula $f_s$ veces por segundo, la carga crece con $f_s^2$. Con la
+        estimación de la sección~\ref{sec:carga}, el EB a
+        \qty{48}{\kilo\sps} necesitaría más de 10 veces el período de
+        muestreo, y a partir de \qty{44}{\kilo\sps} sólo el PB entra en
+        tiempo real.
+  \item \textbf{Precisión de los coeficientes.} En un filtro de banda
+        angosta con $f_s$ alta, la respuesta impulsional se reparte entre
+        miles de coeficientes muy chicos. En el EB a \qty{48}{\kilo\sps}, el
+        \qty{38}{\percent} de los \num{6680} coeficientes vale 2~LSB o menos
+        en q15: la cuantización deja muy pocos bits efectivos justamente en
+        la parte del filtro que define la banda angosta.
+  \item \textbf{Memoria.} Los coeficientes ocupan decenas de kilobytes y el
+        buffer de estado crece con el filtro más largo.
+\end{itemize}
+Los tres tienen el mismo origen: se resuelve a $f_s$ un detalle de pocos
+hertz. Eso es lo que corrige la implementación multitasa.
+
+\subsection{Implementación multitasa}\label{sec:multitasa}
+
+\subsubsection{Idea}
+
+Las bandas que exigen transiciones angostas están todas por debajo de
+\qty{65}{\hertz}: la transición de \qtyrange{20}{50}{\hertz} del PA y del
+flanco inferior del PBanda, y la banda de rechazo de
+\qtyrange{42.5}{57.5}{\hertz} del EB con sus transiciones de
+\qty{7.5}{\hertz}. Para resolver esos detalles no hace falta trabajar a
+\qty{48}{\kilo\sps}: alcanza con una tasa algunas veces mayor que
+\qty{65}{\hertz}. Si la señal se lleva a una tasa baja $f_L$, el mismo
+$\Delta f$ ocupa una fracción $f_s/f_L$ veces mayor del rango normalizado y,
+por la ecuación~\eqref{eq:kaiser}, el orden baja en esa misma proporción.
+
+Se eligió $f_L = \qty{1}{\kilo\hertz}$ porque las cinco velocidades son
+múltiplos enteros de ella: el factor de diezmado es $M = f_s/f_L = 8$, 16,
+22, 44 y 48. Con un factor entero el cambio de tasa es exacto (se toma una
+de cada $M$ muestras) y un único juego de filtros a \qty{1}{\kilo\hertz}
+sirve para las cinco $f_s$. Las $f_s$ reales difieren de las nominales en
+menos de un \qty{0.04}{\percent} (ecuación~\eqref{eq:fs}); $M$ sigue siendo
+entero y todas las frecuencias del filtro se corren en esa misma proporción,
+lo que es despreciable.
+
+\subsubsection{Estructura}
+
+La figura~\ref{fig:multitasa} muestra la estructura. El \emph{camino
+angosto} calcula, a partir de $x[n]$, una señal $v[n]$ que contiene sólo la
+parte de baja frecuencia que el filtro tiene que tratar:
+\begin{align}
+  u[k] &= \sum_{j=0}^{N_D-1} h_D[j]\; x[kM - j]
+        && \text{(filtro antialias y diezmado)}, \label{eq:diezmado}\\
+  w[k] &= \sum_{i=0}^{N_G-1} g[i]\; u[k-i]
+        && \text{(filtro angosto a } f_L\text{)}, \\
+  v[n] &= M \sum_{k} w[k]\; h_D[n - kM]
+        && \text{(interpolación)}. \label{eq:interpolacion}
+\end{align}
+El pasa altos y el elimina banda salen por complemento, restando el camino
+angosto de la entrada retardada:
+\begin{equation}
+  y[n] = x[n-D] - v[n], \qquad D = (N_D - 1) + M\,\frac{N_G - 1}{2}.
+  \label{eq:complemento}
+\end{equation}
+Para el PA, $G$ es un pasa bajos (pasa \qtyrange{0}{20}{\hertz} y rechaza
+desde \qty{50}{\hertz}), y $1 - {}$pasa bajos es un pasa altos. Para el EB,
+$G$ es un pasa banda de \qtyrange{42.5}{57.5}{\hertz}, y $1 - {}$pasa banda
+es un elimina banda. El PBanda es el PA seguido de un pasa bajos directo a
+$f_s$ (LPB, \qtyrange{3400}{3600}{\hertz}). El PB queda como FIR directo a
+$f_s$: su transición de \qty{200}{\hertz} no es angosta y el filtro ya era
+corto (tabla~\ref{tab:taps-eq}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm, every node/.append style={font=\footnotesize}]
+  \tikzset{bloque/.append style={minimum width=1.2cm, minimum height=0.8cm}}
+  \node (x)  at (0,0)    {$x[n]$};
+  \node[sw] (hd) at (1.6,0)  {$H_D$};
+  \node[sw] (dm) at (3.2,0)  {$\downarrow M$};
+  \node[sw] (g)  at (4.9,0)  {$G$\\a $f_L$};
+  \node[sw] (um) at (6.6,0)  {$\uparrow M$};
+  \node[sw] (hi) at (8.2,0)  {$M\,H_D$};
+  \node[sw] (z)  at (4.9,1.5) {$z^{-D}$};
+  \node[draw=azulunc, circle, inner sep=1.5pt] (s) at (9.9,1.5) {$\Sigma$};
+  \node[externo] (lpb) at (11.6,1.5) {LPB\\(PBanda)};
+  \node (y)  at (13.3,1.5) {$y[n]$};
+  \draw[flecha] (x) -- (hd);
+  \draw[flecha] (hd) -- (dm);
+  \draw[flecha] (dm) -- node[etiqueta,above]{$u[k]$} (g);
+  \draw[flecha] (g) -- node[etiqueta,above]{$w[k]$} (um);
+  \draw[flecha] (um) -- (hi);
+  \draw[flecha] (hi) -| node[etiqueta,right,pos=0.8]{$-\,v[n]$} (s);
+  \draw[flecha] (x) |- (z);
+  \draw[flecha] (z) -- node[etiqueta,above]{$+\,x[n-D]$} (s);
+  \draw[flecha] (s) -- (lpb);
+  \draw[flecha] (lpb) -- (y);
+  \draw[grismedio, dashed, rounded corners=3pt]
+       (1.0,-0.75) rectangle (8.9,0.75);
+  \node[etiqueta, grismedio, anchor=north] at (4.9,-0.75) {camino angosto};
+\end{tikzpicture}
+\caption{Estructura multitasa del PA y del EB ($G = G_{\text{PA}}$ o
+$G_{\text{EB}}$). El PBanda agrega a la salida el pasa bajos LPB; el PB es
+un FIR directo a $f_s$.}
+\label{fig:multitasa}
+\end{figure}
+
+Tres decisiones hacen que el complemento funcione:
+\begin{itemize}
+  \item Todos los filtros del camino son de fase lineal y de longitud impar,
+        así que su retardo es un número entero de muestras y $D$ es exacto.
+        Si $v[n]$ tuviera un retardo distinto del de $x[n-D]$, la resta no
+        anularía la banda.
+  \item El mismo $h_D$ sirve de diezmador y de interpolador (este último
+        con ganancia $M$, que compensa los $M-1$ ceros que inserta la
+        interpolación): los dos tienen que dejar pasar
+        \qtyrange{0}{65}{\hertz} y rechazar lo que, al cambiar de tasa, cae
+        encima de esa banda, que empieza en
+        $f_L - \qty{65}{\hertz} = \qty{935}{\hertz}$.
+  \item Los arreglos con el formato de CMSIS-DSP se completan a un número
+        par de coeficientes con el cero al \emph{principio} del arreglo, que
+        en el orden invertido de CMSIS es el final de la respuesta
+        impulsional. La implementación previa lo agregaba al final del
+        arreglo, lo que sumaba una muestra de retardo. En un FIR directo esa
+        muestra no importa; en $G$ se multiplicaría por $M$ y rompería el
+        complemento.
+\end{itemize}
+
+Si por un momento se ignoran los efectos del cambio de tasa, la estructura
+equivale a un filtro LTI con respuesta en amplitud
+\begin{equation}
+  A(f) = 1 - A_D(f)^2\, A_G(f),
+  \label{eq:equivalente}
+\end{equation}
+donde $A_D$ y $A_G$ son las respuestas de fase cero de $h_D$ y de $g$ (esta
+última periódica, con período $f_L$). La ecuación muestra cómo se reparte el
+error: en la banda de rechazo del PA, donde $A_G \approx 1$, el error es la
+suma de los rizados de $G$ y de las dos pasadas por $H_D$; en su banda de
+paso, donde $A_G \approx 0$, el rizado del PA es el rechazo de $G$.
+
+\subsubsection{Aliasing e imágenes}
+
+Un sistema con cambio de tasa no es LTI: una senoidal de frecuencia $f$ a la
+entrada produce, además de la salida en $f$ que describe la
+ecuación~\eqref{eq:equivalente}, componentes en $f + k f_L$ ($k \ne 0$) de
+amplitud
+\begin{equation}
+  |H_D(f)|\;|G(f)|\;|H_D(f + k f_L)|.
+  \label{eq:espurias}
+\end{equation}
+Se exigió que la suma en potencia de todas esas componentes quedara en
+\qty{-40}{\deci\bel} o menos, \qty{10}{\deci\bel} por debajo de la banda de
+rechazo más exigente.
+
+El caso más desfavorable no está donde $H_D$ rechaza, sino en su banda de
+transición (\qtyrange{65}{935}{\hertz}). Ahí $H_D$ deja pasar parte de la
+señal, que al diezmar se superpone con la banda de rechazo de $G$, y el
+interpolador la vuelve a sacar en $f_L - f$. Su nivel es aproximadamente el
+rechazo de $G$ multiplicado por $|H_D(f_L/2)|^2 \approx 1/4$. En un primer
+diseño, con el rechazo de $G_{\text{EB}}$ en \qty{-26}{\deci\bel}, esas
+componentes llegaban a \qty{-38.8}{\deci\bel}. Por eso el desvío en la banda
+de rechazo de los filtros $G$ se limitó también a $4 \cdot 10^{-40/20}$, lo
+que alargó $G_{\text{EB}}$ de 143 a 187 coeficientes.
+
+\subsubsection{Relación con la FFT}\label{sec:fft}
+
+La palabra \emph{diezmado} aparece también en la FFT (algoritmos de
+diezmado en el tiempo y en la frecuencia), y la relación va más allá del
+nombre: las dos técnicas se apoyan en la misma separación de una secuencia
+en fases y en el mismo efecto de esa separación sobre el espectro. Esa
+relación explica por qué la estructura multitasa es eficiente, por qué
+necesita el filtro $H_D$ y cómo se verificaron los filtros.
+
+\paragraph{Separar en fases.} La FFT de diezmado en el tiempo separa la
+secuencia en sus muestras pares e impares y arma la DFT de $N$ puntos con
+dos DFT de $N/2$:
+\begin{equation}
+  X[k] = \underbrace{\sum_{r=0}^{N/2-1} x[2r]\, W_{N/2}^{rk}}_{P[k]}
+       + W_N^{k} \underbrace{\sum_{r=0}^{N/2-1} x[2r+1]\, W_{N/2}^{rk}}_{I[k]},
+  \qquad W_N = e^{-j2\pi/N}.
+  \label{eq:fft-dit}
+\end{equation}
+Como $W_N^{N/2} = -1$, cada par de salidas sale de una \emph{mariposa}:
+$X[k] = P[k] + W_N^k I[k]$ y $X[k+N/2] = P[k] - W_N^k I[k]$, para
+$0 \le k < N/2$. Repitiendo la separación se llega a $\log_2 N$ etapas y a
+unas $(N/2)\log_2 N$ multiplicaciones en lugar de $N^2$. Con $M$ fases en
+lugar de 2 (FFT de base $M$) las secuencias son $x[rM + p]$, con
+$p = 0, \dots, M-1$: son las \emph{componentes polifásicas} de $x$.
+
+La estructura multitasa usa la misma separación, aplicada al filtro $h_D$.
+Sus componentes polifásicas son $e_p[m] = h_D[mM + p]$, y con ellas las
+ecuaciones~\eqref{eq:diezmado} y~\eqref{eq:interpolacion} quedan
+\begin{equation}
+  u[k] = \sum_{p=0}^{M-1} \sum_{m} e_p[m]\; x\bigl[(k-m)M - p\bigr],
+  \qquad
+  v[kM + p] = M \sum_{m} e_p[m]\; w[k-m].
+  \label{eq:polifasica}
+\end{equation}
+En el diezmador, cada fase del filtro trabaja sobre una fase de la entrada,
+como cada DFT de $N/2$ puntos trabaja sobre una mitad de la secuencia. En el
+interpolador, la fase $p$ de la salida sale sólo de la fase $p$ del filtro:
+es la fórmula de la sección~\ref{sec:camino}, que saltea las
+multiplicaciones por los ceros insertados. El ahorro tiene el mismo origen
+en los dos casos: no hacer cuentas innecesarias. En la FFT, cada DFT más
+chica se calcula una vez y se reutiliza para dos salidas; en el diezmador,
+no se calculan las $M-1$ de cada $M$ salidas que se descartan; en el
+interpolador, no se multiplica por los ceros.
+
+\paragraph{Diezmar en el tiempo es plegar en frecuencia.} Si se suman las
+dos salidas de la mariposa, queda
+\begin{equation}
+  P[k] = \tfrac{1}{2}\bigl(X[k] + X[k+N/2]\bigr)
+  \qquad\text{y, con } M \text{ fases,}\qquad
+  X_0[k] = \frac{1}{M}\sum_{q=0}^{M-1} X\!\left[k + q\,\frac{N}{M}\right],
+  \label{eq:plegado}
+\end{equation}
+donde $X_0$ es la DFT de $x[rM]$. La DFT de las muestras que se conservan
+es el espectro original \emph{plegado}: cada bin suma los $M$ bins, separados
+$N/M$, que al bajar la tasa caen en el mismo lugar. Es el mismo aliasing de
+la ecuación~\eqref{eq:espurias}, escrito con la DFT: diezmar por $M$ en el
+tiempo superpone las frecuencias $f, f + f_L, \dots, f + (M-1)f_L$.
+
+La diferencia está en lo que se hace después. La FFT conserva \emph{todas}
+las fases, y la mariposa deshace el plegado: con $P[k]$ e $I[k]$ recupera
+$X[k]$ y $X[k+N/2]$ por separado, así que el cálculo es exacto y no necesita
+ningún filtro. El diezmado de la señal conserva una sola fase y descarta las
+otras $M-1$, así que el plegado ya no se puede deshacer: lo que haya en
+$f + q f_L$ queda mezclado con lo que hay en $f$. Por eso hace falta $H_D$
+\emph{antes} de diezmar: para que en esas frecuencias no haya nada que
+plegar.
+
+\paragraph{La FFT en la generación de los filtros.} Los scripts que generan
+los coeficientes usan la FFT en tres lugares:
+\begin{itemize}
+  \item \textbf{Para medir cada bloque.} La respuesta en frecuencia de un
+        FIR es la DFT de sus coeficientes completados con ceros:
+        \texttt{abs(fft(h, nfft))} da $|H|$ en \texttt{nfft} frecuencias
+        equiespaciadas. Con $\texttt{nfft} \ge 32N$ hay unos 32 puntos por
+        lóbulo, y sobre esa grilla se decide si el bloque cumple en q15.
+  \item \textbf{Para medir el aliasing.} Para evaluar la
+        ecuación~\eqref{eq:espurias}, \archivo{disenar_multitasa.m} usa una
+        FFT de $N_{\text{FFT}} = MK$ puntos, de modo que $f_L$ equivale
+        exactamente a $K$ bins. Así los bins $i, i+K, \dots, i+(M-1)K$ son
+        las $M$ frecuencias que se pliegan entre sí, y la suma de la
+        ecuación~\eqref{eq:plegado} se calcula reacomodando el vector en una
+        matriz de $K \times M$ y sumando por filas. Es la misma condición que
+        pide una FFT de base $M$: que la cantidad de puntos sea múltiplo de
+        $M$.
+  \item \textbf{Para diseñar los FIR directos largos.} El algoritmo de
+        Remez de \archivo{disenar_PB_PA.m} evalúa en cada iteración la
+        respuesta $A(\omega) = \sum_k a_k \cos(k\omega)$ en una grilla de
+        $16L$ frecuencias ($L \approx N/2$). Calcularla directamente cuesta
+        unos $16L^2$ productos por iteración, más de $10^8$ para el EB a
+        \qty{48}{\kilo\sps}; con una FFT del vector $a_k$, del orden de
+        $32L\log_2(32L)$. Eso es lo que permitió llegar a órdenes de miles,
+        donde \texttt{fdatool} fallaba.
+\end{itemize}
+Además, de las cuatro familias de métodos de diseño
+(sección~\ref{sec:metodos}), la de muestreo en frecuencia obtiene los
+coeficientes directamente como la DFT inversa de $N$ muestras de la respuesta
+deseada, es decir, con una IFFT. La tabla~\ref{tab:fft-multitasa} resume la
+comparación.
+
+\begin{table}[H]
+\centering
+\caption{El diezmado en la FFT y en la estructura multitasa.}
+\label{tab:fft-multitasa}
+\footnotesize
+\begin{tabular}{@{}p{2.9cm} p{5.6cm} p{5.6cm}@{}}
+\toprule
+& \textbf{FFT (diezmado en el tiempo)} & \textbf{Diezmador e interpolador}\\
+\midrule
+Qué se separa en fases
+  & La secuencia, $x[rM + p]$
+  & El filtro, $e_p[m] = h_D[mM + p]$, y con él la entrada\\
+Qué se hace con las fases
+  & Se conservan todas y se recombinan con los factores $W_N^{pk}$
+  & Se conserva una muestra de cada $M$ (diezmado); en cada muestra se
+    calcula una sola fase (interpolación)\\
+Efecto en frecuencia
+  & Cada fase tiene el espectro plegado
+    (ecuación~\eqref{eq:plegado}); la mariposa lo deshace
+  & El plegado es el aliasing y no se puede deshacer\\
+¿Necesita filtro?
+  & No: el cálculo es exacto
+  & Sí: $H_D$ antes de diezmar y después de interpolar\\
+De dónde sale el ahorro
+  & Reutilizar DFT más chicas: de $N^2$ a $(N/2)\log_2 N$ productos
+  & No calcular salidas descartadas ni productos por cero: $N_D$ productos
+    cada $M$ muestras, o $L$ por muestra con el diezmador repartido\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Reparto del error}
+
+Las especificaciones de la tabla~\ref{tab:specs} son del filtro completo, así
+que hay que repartirlas entre los bloques. Con $\delta_p = 0{,}0575$
+(\qty{1}{\deci\bel} pico a pico), $\delta_s = 10^{-A_{\text{stop}}/20}$ y un
+margen del \qty{85}{\percent} para absorber la cuantización:
+\begin{itemize}
+  \item $H_D$: desvío de $0{,}002$ en la banda de paso y \qty{60}{\deci\bel}
+        de rechazo. Su rizado entra dos veces en la
+        ecuación~\eqref{eq:equivalente}.
+  \item $G_{\text{PA}}$: en su banda de paso (la de rechazo del PA), el
+        desvío tiene que dejar lugar a las dos pasadas por $H_D$,
+        $0{,}85\,(\delta_s - 2 \cdot 0{,}002) = 0{,}0235$. En su banda de
+        rechazo (la de paso del PA) se usa la mitad del rizado de
+        \qty{1}{\deci\bel}, porque el PBanda usa el PA en cascada con el
+        LPB: $\delta_{pc} = (10^{1/40}-1)/(10^{1/40}+1) = 0{,}0288$, que con
+        el margen da $0{,}0245$.
+  \item $G_{\text{EB}}$: $0{,}85\,(\delta_s - 2 \cdot 0{,}002) = 0{,}0444$
+        en su banda de paso (la de rechazo del EB, con
+        $A_{\text{stop}} = \qty{25}{\deci\bel}$) y $0{,}034$ en las de
+        rechazo, por el límite de las componentes espurias.
+  \item LPB: el rizado que deja libre el PA dentro de \qty{1}{\deci\bel}
+        ($0{,}0280$) y un rechazo de $0{,}0262$, que contempla la ganancia
+        del PA en su banda de paso.
+  \item PB: directamente $\delta_p$ y $\delta_s$.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Bloques de la implementación multitasa: bandas, desvíos admitidos y
+cantidad de coeficientes (orden mínimo que cumple en q15). Para los bloques
+a $f_s$ se indica el valor a 8, 16, 22, 44 y \qty{48}{\kilo\sps}.}
+\label{tab:bloques}
+\footnotesize
+\begin{tabular}{@{}l l p{4.4cm} r r p{2.6cm}@{}}
+\toprule
+\textbf{Bloque} & \textbf{Tasa} & \textbf{Bandas [Hz]} &
+\textbf{$\delta$ paso} & \textbf{$\delta$ rechazo} & \textbf{Coeficientes}\\
+\midrule
+$G_{\text{PA}}$ & $f_L$ & paso 0--20; rechazo 50--500
+                & \num{0.0235} & \num{0.0245} & 49\\
+$G_{\text{EB}}$ & $f_L$ & paso 42,5--57,5; rechazo 0--35 y 65--500
+                & \num{0.0444} & \num{0.0340} & 187\\
+$H_D$           & $f_s$ & paso 0--65; rechazo 935--$f_s/2$
+                & \num{0.002}  & \num{0.001}  & 31, 59, 83, 165, 181\\
+LPB             & $f_s$ & paso 0--3400; rechazo 3600--$f_s/2$
+                & \num{0.0280} & \num{0.0262} & 57, 113, 155, 309, 337\\
+PB              & $f_s$ & paso 0--3500; rechazo 3700--$f_s/2$
+                & \num{0.0575} & \num{0.0316} & 49, 93, 129, 255, 279\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Diseño y verificación}
+
+El script \archivo{disenar_multitasa.m} diseña cada bloque con
+\texttt{firpm} (Parks-McClellan): parte del orden que estima
+\texttt{firpmord} (un \qty{15}{\percent} por debajo, porque la fórmula
+puede equivocarse en los dos sentidos) y lo sube de a 2 hasta que los
+coeficientes, \emph{ya redondeados a q15}, cumplen los desvíos de la
+tabla~\ref{tab:bloques}. Después verifica cada uno de los 20 filtros
+compuestos contra la especificación original:
+\begin{enumerate}
+  \item Calcula la respuesta exacta de la parte LTI (la convolución de
+        $h_D$, $g$ con $M-1$ ceros entre coeficientes y otra vez $h_D$, y el
+        complemento) y mide el rizado, la atenuación y la ganancia máxima en
+        todo el rango $[0,\, f_s/2]$.
+  \item Calcula con la ecuación~\eqref{eq:espurias} el nivel total de
+        aliasing e imágenes para cada frecuencia de entrada.
+  \item Simula la cadena en el tiempo con dos modelos, uno vectorizado y
+        otro muestra a muestra, que es el que se tradujo a C. Comprueba que
+        coinciden (diferencia máxima de $6 \cdot 10^{-17}$) y que la
+        amplitud de tonos de prueba medida en régimen coincide con la
+        respuesta calculada (diferencia máxima de $5 \cdot 10^{-7}$).
+\end{enumerate}
+La tabla~\ref{tab:compuestos} resume el resultado: los 20 filtros cumplen.
+
+\begin{table}[H]
+\centering
+\caption{Filtros compuestos con coeficientes q15, peor caso entre las cinco
+$f_s$: rizado pico a pico en la banda de paso, atenuación mínima en la de
+rechazo, nivel total de aliasing e imágenes y retardo de grupo.}
+\label{tab:compuestos}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+\textbf{Filtro} & \textbf{Rizado} & \textbf{Atenuación} & \textbf{Pedida} &
+\textbf{Espurias} & \textbf{Retardo}\\
+\midrule
+PB     & \qty{0.99}{\deci\bel} & \qty{30.06}{\deci\bel} & \qty{30}{\deci\bel}
+       & ---                    & \qty{3.0}{\milli\second}\\
+PA     & \qty{0.38}{\deci\bel} & \qty{32.28}{\deci\bel} & \qty{30}{\deci\bel}
+       & \qty{-45.6}{\deci\bel} & \qty{27.8}{\milli\second}\\
+PBanda & \qty{0.79}{\deci\bel} & \qty{31.74}{\deci\bel} & \qty{30}{\deci\bel}
+       & \qty{-45.4}{\deci\bel} & \qty{31.3}{\milli\second}\\
+EB     & \qty{0.59}{\deci\bel} & \qty{26.80}{\deci\bel} & \qty{25}{\deci\bel}
+       & \qty{-41.8}{\deci\bel} & \qty{96.8}{\milli\second}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Las figuras~\ref{fig:mt-pb} a~\ref{fig:mt-eb} muestran la respuesta en
+frecuencia de cada filtro compuesto, calculada con los coeficientes q15, a
+las cinco $f_s$ superpuestas y con eje de frecuencia logarítmico. La línea de
+trazos es la atenuación pedida y la de puntos, el límite inferior de la
+banda de paso; cada curva llega hasta su $f_s/2$. Las cinco curvas casi
+coinciden: la respuesta en hertz no depende de la velocidad. En el PA, el
+PBanda y el EB eso se cumple por construcción, porque la parte angosta se
+calcula siempre a \qty{1}{\kilo\hertz} con los mismos filtros $G$. Las
+figuras muestran la parte LTI de la respuesta; el nivel de las componentes
+espurias del cambio de tasa está en la tabla~\ref{tab:compuestos}.
+
+La carga de CPU que indican las leyendas es la de la muestra de diezmado con
+el diezmador calculado de una sola vez. El firmware lo reparte entre las $M$
+muestras, así que su carga es la de la tabla~\ref{tab:carga-multitasa}: por
+ejemplo, \qty{63}{\percent} y no \qty{92}{\percent} en el PBanda a
+\qty{48}{\kilo\sps}.
+
+\captura{img/pb-multitasa.png}{MATLAB}{Respuesta del pasa bajos a las cinco
+$f_s$, con coeficientes q15. Es un FIR directo; el título dice
+\emph{multitasa} porque el script grafica los cuatro filtros con la misma
+función.}{fig:mt-pb}
+
+\captura{img/pa-multitasa.png}{MATLAB}{Respuesta del pasa altos multitasa a
+las cinco $f_s$: rechazo por debajo de \qty{-30}{\deci\bel} hasta
+\qty{20}{\hertz} y banda de paso desde \qty{50}{\hertz}.}{fig:mt-pa}
+
+\captura{img/pbanda-multitasa.png}{MATLAB}{Respuesta del pasa banda
+multitasa (PA seguido del LPB) a las cinco $f_s$.}{fig:mt-pbanda}
+
+\captura{img/eb-multitasa.png}{MATLAB}{Respuesta del elimina banda
+multitasa a las cinco $f_s$: rechazo por debajo de \qty{-25}{\deci\bel}
+entre \qty{42.5}{\hertz} y \qty{57.5}{\hertz}.}{fig:mt-eb}
+
+\subsection{De MATLAB al firmware}\label{sec:matlab-firmware}
+
+\archivo{disenar_multitasa.m} escribe directamente el archivo de cabecera
+\archivo{source/filtros_multitasa.h}, sin pasar por \texttt{fdatool}.
+Además de los coeficientes en q15,
+$b_k^{q15} = \operatorname{round}\!\left(2^{15}\, b_k\right)$, el archivo
+trae todo lo que el firmware necesita para armar la estructura:
+\begin{itemize}
+  \item \texttt{G\_PA} y \texttt{G\_EB}, compartidos por las cinco $f_s$, y
+        \texttt{PB\_<fs>} y \texttt{LPB\_<fs>}, en el formato de CMSIS-DSP
+        (orden invertido y cantidad par de coeficientes, con el cero al
+        principio del arreglo).
+  \item \texttt{HD\_<fs>} en orden natural, completado con ceros hasta un
+        múltiplo de $M$ (\texttt{HD\_PAD}), para que el interpolador
+        polifásico (sección~\ref{sec:camino}) pueda recorrer cada fase sin
+        controlar los límites.
+  \item Las tablas \texttt{m\_tabla} ($M$), \texttt{d\_pa\_tabla} y
+        \texttt{d\_eb\_tabla} ($D$ de la
+        ecuación~\eqref{eq:complemento}), las tablas de punteros y de
+        cantidades indexadas por $f_s$, y las constantes que dimensionan los
+        buffers (\texttt{LONG\_HIST\_X}, \texttt{MAX\_HIST\_W} y
+        \texttt{MAX\_TAPS\_FS}).
+\end{itemize}
+El mismo script escribe \archivo{resumen_multitasa.csv}, con la carga de
+CPU, el retardo y el resultado de la verificación de cada filtro, y grafica
+las respuestas compuestas. El archivo de cabecera completo, con los valores
+de todos los coeficientes, está en el Anexo~\ref{sec:coeficientes}.
+
+\subsection{Comparación con la implementación previa}\label{sec:taps}
+
+La tabla~\ref{tab:comparacion} resume las diferencias. Las cargas de CPU son
+estimaciones con $c = 5$ ciclos por coeficiente (sección~\ref{sec:carga}); el
+peor caso de la multitasa además se midió (sección~\ref{sec:carga-medida}).
+
+\begin{table}[H]
+\centering
+\caption{Implementación previa (un FIR directo por $f_s$) frente a la
+implementación multitasa.}
+\label{tab:comparacion}
+\footnotesize
+\begin{tabular}{@{}p{3.1cm} p{5.5cm} p{5.5cm}@{}}
+\toprule
+& \textbf{Previa: FIR directo} & \textbf{Multitasa}\\
+\midrule
+Estructura & 20 FIR, cada uno calculado a su $f_s$
+           & PB directo; PA y EB por complemento de un camino a
+             \qty{1}{\kilo\hertz}; PBanda = PA seguido de LPB\\
+Diseño     & \texttt{fdatool}, ventana de Kaiser, exportado con
+             \archivo{generar_filtros.m}
+           & \texttt{firpm} (equiripple), orden mínimo verificado en q15,
+             con \archivo{disenar_multitasa.m}\\
+Bordes del PA y del PBanda
+           & Banda de paso desde \qty{35}{\hertz} (transición de
+             \qty{15}{\hertz})
+           & $f_c = \qty{35}{\hertz}$ en el centro de
+             \qtyrange{20}{50}{\hertz}\\
+Filtros que cambian con $f_s$
+           & Los 20
+           & $H_D$, PB y LPB; $G_{\text{PA}}$ y $G_{\text{EB}}$ son los
+             mismos\\
+Coeficientes en flash
+           & \num{51220} (100~KiB); \num{30920} con equiripple
+           & \num{2576} (5~KiB)\\
+RAM de estado
+           & \num{7605} muestras (15~KiB)
+           & unos 10~KiB, casi todo la historia de $x$ para $x[n-D]$\\
+Peor carga estimada
+           & EB a \qty{48}{\kilo\sps}: \qty{1217}{\percent} (Kaiser),
+             \qty{1069}{\percent} (equiripple)
+           & PBanda a \qty{48}{\kilo\sps}: \qty{63}{\percent} (medido:
+             \qty{65}{\percent})\\
+Combinaciones en tiempo real (estimado)
+           & 10 de 20 (Kaiser), 12 de 20 (equiripple)
+           & 20 de 20\\
+Retardo del PA
+           & \qty{51}{\milli\second} (Kaiser), \qty{20}{\milli\second}
+             (equiripple)
+           & \qty{28}{\milli\second}\\
+Retardo del EB
+           & \qty{79}{\milli\second} (Kaiser), \qty{70}{\milli\second}
+             (equiripple)
+           & \qty{97}{\milli\second}\\
+Coeficientes q15 de 2~LSB o menos
+           & \qty{38}{\percent} en el EB a \qty{48}{\kilo\sps}
+             (equiripple)
+           & \qty{1.2}{\percent} en $G_{\text{EB}}$\\
+Firmware   & \texttt{arm\_fir\_q15()} sobre 20 instancias
+           & \texttt{arm\_fir\_q15()} para PB, LPB y $G$; diezmador
+             repartido e interpolador polifásico propios\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La tabla~\ref{tab:taps-multitasa} da la cantidad de coeficientes de cada uno
+de los 20 filtros finales, sumando los bloques que usa: el PB, sólo el suyo;
+el PA, $H_D$ y $G_{\text{PA}}$; el PBanda, además, el LPB; y el EB, $H_D$ y
+$G_{\text{EB}}$. $H_D$ se cuenta una vez aunque se usa dos veces (como
+diezmador y como interpolador), y no se cuentan los ceros de relleno. Entre
+paréntesis figura la cantidad del FIR directo equiripple de la
+tabla~\ref{tab:taps-eq}, con las mismas especificaciones.
+
+\begin{table}[H]
+\centering
+\caption{Cantidad de coeficientes de cada filtro en la implementación
+multitasa (entre paréntesis, la del FIR directo equiripple).}
+\label{tab:taps-multitasa}
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{PB} & \textbf{PA} & \textbf{PBanda} & \textbf{EB}\\
+\midrule
+\qty{8000}{\hertz}  & 49 (50)   & 80 (318)   & 137 (316)  & 218 (\num{1108})\\
+\qty{16000}{\hertz} & 93 (94)   & 108 (632)  & 221 (634)  & 246 (\num{2216})\\
+\qty{22000}{\hertz} & 129 (128) & 132 (870)  & 287 (872)  & 270 (\num{3048})\\
+\qty{44000}{\hertz} & 255 (256) & 214 (\num{1744}) & 523 (\num{1746}) & 352 (\num{6124})\\
+\qty{48000}{\hertz} & 279 (278) & 230 (\num{1902}) & 567 (\num{1904}) & 368 (\num{6680})\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Los filtros comparten bloques, así que lo que se guarda en flash no es la
+suma de la tabla: $G_{\text{PA}}$ y $G_{\text{EB}}$ son los mismos para las
+cinco $f_s$, y $H_D$ es el mismo para el PA, el PBanda y el EB de cada
+$f_s$. En total son \num{2531} coeficientes distintos, \num{2576} con los
+ceros de relleno, frente a \num{30920} del FIR directo. Los valores están en
+el Anexo~\ref{sec:coeficientes}. La cantidad de coeficientes tampoco es la
+cantidad de productos por muestra (tabla~\ref{tab:carga-multitasa}), porque
+$H_D$ se reparte entre las $M$ muestras y $G$ se calcula una vez cada $M$.
+
+La ventaja principal es que el costo del camino angosto ya no depende de
+$f_s$: $G$ trabaja siempre a \qty{1}{\kilo\hertz}, y lo único que crece con
+$f_s$ son los filtros de transición ancha ($H_D$, PB y LPB). Las desventajas
+son tres. La estructura es más compleja y su retardo es mayor que el del FIR
+directo equiripple, porque suma el de las dos pasadas por $H_D$ y el de
+filtros $G$ diseñados con margen. El cambio de tasa agrega componentes
+espurias, acotadas a \qty{-41.8}{\deci\bel}. Y el sistema ya no es LTI, así
+que su verificación no se puede limitar a la respuesta en frecuencia.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Diseño de la aplicación}\label{sec:diseno}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Arquitectura general}
+
+La figura~\ref{fig:bloques} muestra las partes de la aplicación. El camino de
+la señal es el del Laboratorio 1 con un bloque de procesamiento en el medio:
+el CTIMER0 dispara cada conversión a través del INPUTMUX, el LPADC0 deja el
+resultado en su FIFO y la rutina de interrupción lo convierte a q15, lo pasa
+por el filtro activo (o lo copia, en \emph{bypass}) al buffer de salida y
+desde ahí lo escribe en el DAC0; mientras se ejecuta, mantiene en 1 el pin de
+medición \pin{P0\_26}. Las teclas sólo modifican el estado: SW3 cambia la frecuencia de
+muestreo (match del CTIMER0) y SW2 el tipo de filtro. Ambas avisan a la
+rutina del ADC, que es la única que cambia el filtro activo. El lazo
+principal lee el touchpad, que habilita o deshabilita el filtro, y es el
+único que escribe el LED: su color indica la frecuencia de muestreo y su
+parpadeo, el filtro (sección~\ref{sec:habilitacion}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=1cm,y=1cm, every node/.append style={font=\footnotesize}]
+  \tikzset{bloque/.append style={minimum width=1.9cm}}
+  % --- Arriba: lo que escribe la ISR del ADC ademas del DAC ---
+  \node[externo] (p26) at (3.2,2.0)  {\pin{P0\_26}\\medición de la ISR};
+  \node[mem]     (buf) at (10.2,2.0) {\texttt{buffer\_in}\\\texttt{buffer\_out}\\512 $\times$ q15};
+
+  % --- Fila 1: camino de la señal ---
+  \node[externo] (gen) at (0,0)     {Generador\\de señal};
+  \node[hw]      (adc) at (3.2,0)   {\periferico{LPADC0}\\canal A0, \qty{16}{\bit}};
+  \node[sw]      (isr) at (6.6,0)   {ISR\\del ADC0};
+  \node[hw]      (dac) at (10.2,0)  {\periferico{DAC0}\\\qty{12}{\bit}};
+  \node[externo] (osc) at (13.5,0)  {Osciloscopio};
+
+  % --- Fila 2: disparo, filtrado y lazo principal ---
+  \node[hw] (mux)  at (3.2,-2.3)  {\periferico{INPUTMUX}};
+  \node[sw] (fir)  at (6.6,-2.3)  {\texttt{filtrar()}\\multitasa o \emph{bypass}};
+  \node[sw] (lazo) at (10.2,-2.3) {Lazo principal\\(\texttt{main()})};
+  \node[hw] (tsi)  at (13.5,-2.3) {Touchpad E1\\\periferico{TSI0}};
+
+  % --- Fila 3 ---
+  \node[externo] (p19)  at (0,-4.6)    {\pin{P0\_19}\\punto de prueba};
+  \node[hw]      (tmr)  at (3.2,-4.6)  {\periferico{CTIMER0}\\match 3};
+  \node[mem]     (coef) at (6.6,-4.6)  {\texttt{filtros\_multitasa.h}\\flash};
+  \node[sw]      (isk)  at (10.2,-4.6) {ISR de\\teclas};
+  \node[hw]      (led)  at (13.5,-4.6) {LED RGB};
+
+  % --- Fila 4 ---
+  \node[hw] (sw) at (10.2,-6.9) {Teclas\\SW3 (velocidad) \,/\, SW2 (filtro)};
+
+  % --- Señal ---
+  \draw[senal] (gen) -- node[etiqueta,above]{$x(t)$} (adc);
+  \draw[senal] (adc) -- node[etiqueta,above]{FIFO0} (isr);
+  \draw[senal] (isr) -- node[etiqueta,above]{código} (dac);
+  \draw[senal] (dac) -- node[etiqueta,above]{$y(t)$} (osc);
+
+  % --- Datos y disparo ---
+  \draw[flecha,{Stealth[length=2mm]}-{Stealth[length=2mm]}]
+       (isr) -- node[etiqueta,right]{$x[n]$, $y[n]$} (fir);
+  \draw[flecha] (coef) -- node[etiqueta,right]{$b_k$} (fir);
+  \draw[flecha] ([xshift=4mm]isr.north) |- node[etiqueta,above,pos=0.75]{guarda} (buf.west);
+  \draw[flecha] ([xshift=-4mm]isr.north) |- (p26.east);
+  \draw[flecha] (tmr) -- node[etiqueta,right]{MAT3 (toggle)} (mux);
+  \draw[flecha] (mux) -- node[etiqueta,right]{trigger 0} (adc);
+  \draw[flecha] (tmr) -- (p19);
+
+  % --- Control ---
+  \draw[control] ([xshift=5mm]sw.north) -- node[etiqueta,right]{flanco $\downarrow$}
+                 ([xshift=5mm]isk.south);
+  \draw[control] ([xshift=-5mm]isk.south) -- ++(0,-0.5) -| (tmr.south);
+  \node[etiqueta,above] at (6.6,-5.65) {nuevo MR};
+  \draw[control] (isk.north west) -- node[etiqueta,above right]{\texttt{cambio\_filtro}}
+                 (fir.south east);
+  \draw[control] (tsi) -- node[etiqueta,above]{toque} (lazo);
+  \draw[control] (lazo) -- node[etiqueta,above]{habilita} (fir);
+  \draw[control] (lazo.south east) -- node[etiqueta,right]{color y\\parpadeo}
+                 (led.north west);
+
+  % --- Leyenda ---
+  \begin{scope}[shift={(1.6,-8.4)},every node/.style={font=\scriptsize}]
+    \foreach \c/\t [count=\k from 0] in {bloquehw/Periférico,bloquesw/Firmware,
+                                          bloquemem/Memoria}
+      {\fill[\c,draw=azulunc] (2.4*\k,0) rectangle ++(0.35,0.25);
+       \node[right] at (2.4*\k+0.4,0.125) {\t};}
+    \draw[grismedio,dashed] (7.2,0) rectangle ++(0.35,0.25);
+    \node[right] at (7.6,0.125) {Externo};
+  \end{scope}
+\end{tikzpicture}
+\caption{Diagrama de bloques de la aplicación. Trazo continuo azul: señal;
+negro: datos y disparo; punteado: control.}
+\label{fig:bloques}
+\end{figure}
+
+\subsection{Velocidades de muestreo}
+
+La generación de las velocidades no cambió respecto del Laboratorio 1: con el
+timer contando a \ftimer{}, reiniciándose en el match y con la salida en
+toggle,
+\begin{equation}
+  f_s = \frac{f_{\text{timer}}}{2\,(\text{MR} + 1)}.
+  \label{eq:fs}
+\end{equation}
+La tabla~\ref{tab:fs} repite los valores de MR (arreglo \texttt{sample\_vel})
+y el color del LED de cada estado.
+
+\begin{table}[H]
+\centering
+\caption{Velocidades de muestreo, valor de match programado y color del LED.}
+\label{tab:fs}
+\begin{tablamuestreo}
+  \filafs{8000} {9374}{Verde}   {0}{1}{0}
+  \filafs{16000}{4687}{Amarillo}{1}{1}{0}
+  \filafs{22000}{3408}{Azul}    {0}{0}{1}
+  \filafs{44000}{1704}{Rojo}    {1}{0}{0}
+  \filafs{48000}{1562}{Blanco}  {1}{1}{1}
+\end{tablamuestreo}
+\end{table}
+
+\subsection{Máquina de estados}
+
+El comportamiento de las teclas se modela con dos variables de estado
+independientes (figura~\ref{fig:estados}):
+
+\begin{itemize}[nosep]
+  \item \texttt{state\_counter}: índice de velocidad (E0 a E4). Avanza en
+        forma circular con SW3. Cada cambio reprograma el match del CTIMER0,
+        actualiza el color del LED y obliga a cambiar los coeficientes del
+        filtro activo por los diseñados para la nueva $f_s$.
+  \item \texttt{filter\_counter}: tipo de filtro (F0 a F3). Avanza en forma
+        circular con SW2: PB $\rightarrow$ PA $\rightarrow$ PBanda
+        $\rightarrow$ EB $\rightarrow$ PB.
+\end{itemize}
+
+Las dos teclas actúan en cualquier estado, y la combinación de ambas
+variables elige uno de los 20 filtros de la tabla~\ref{tab:compuestos}. El
+color del LED indica la velocidad y su frecuencia de parpadeo, el filtro. Al
+reiniciar la placa el sistema arranca en E0 (\qty{8}{\kilo\sps}), con el PB y
+con la salida filtrada. Si la salida va filtrada o no lo decide el touchpad,
+independientemente de estas dos variables (sección~\ref{sec:habilitacion}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+  % --- Anillo de velocidades ---
+  \foreach \i/\f/\r/\g/\b in {0/8/0/1/0, 1/16/1/1/0, 2/22/0/0/1,
+                                3/44/1/0/0, 4/48/1/1/1} {
+    \node[estado] (e\i) at ({90-72*\i}:2.5)
+      {\textbf{E\i}\\[-1pt]{\footnotesize\f\,kS/s}\\[1pt]\led{\r}{\g}{\b}};
+  }
+  \foreach \i/\j in {0/1,1/2,2/3,3/4,4/0}
+    \draw[flecha] (e\i) to[bend left=18] node[etiqueta,sloped,above]{SW3} (e\j);
+  \node[etiqueta] at (0,0) {avance\\circular};
+  \draw[flecha] (-2.2,3.3) node[left,etiqueta]{reset} -- (e0);
+
+  % --- Anillo de filtros ---
+  \begin{scope}[xshift=7.6cm]
+    \foreach \i/\n/\f in {0/PB/1, 1/PA/2, 2/PBanda/4, 3/EB/8} {
+      \node[estado] (f\i) at ({90-90*\i}:2.5)
+        {\textbf{F\i}\\[-1pt]{\footnotesize\n}\\[-1pt]{\scriptsize\f\,Hz}};
+    }
+    \foreach \i/\j in {0/1,1/2,2/3,3/0}
+      \draw[flecha] (f\i) to[bend left=18] node[etiqueta,sloped,above]{SW2} (f\j);
+    \node[etiqueta] at (0,0) {avance\\circular};
+    \draw[flecha] (-2.2,3.3) node[left,etiqueta]{reset} -- (f0);
+  \end{scope}
+\end{tikzpicture}
+\caption{Izquierda: selección circular de la velocidad de muestreo con SW3 y
+color del LED en cada estado. Derecha: selección circular del filtro con SW2
+y frecuencia de parpadeo del LED con la salida filtrada.}
+\label{fig:estados}
+\end{figure}
+
+\subsection{Habilitación del filtro e indicación en el LED}\label{sec:habilitacion}
+
+\paragraph{Touchpad.} La salida filtrada se habilita y se deshabilita con el
+touchpad E1 de la placa, un electrodo capacitivo conectado a \pin{P1\_3},
+que es el canal 3 del TSI0 (\emph{Touch Sensing Input}). El TSI trabaja en
+modo \emph{self-cap}: carga y descarga la capacidad del electrodo y entrega
+una cuenta que baja cuando un dedo la aumenta. Cada toque invierte
+\texttt{salida\_filtrada}: con 1, la rutina del ADC escribe en el buffer de
+salida la salida del filtro; con 0 hace \emph{bypass}: copia la muestra del
+ADC al buffer de salida y no calcula el filtro. En los dos casos el DAC lee
+del buffer de salida, como pide la consigna.
+
+El touchpad se lee desde el lazo principal, sin interrupciones, para no
+competir con la rutina del ADC:
+\begin{itemize}[nosep]
+  \item El pin y el reloj se configuran en Config Tools
+        (figura~\ref{fig:pins-tsi}): \pin{P1\_3} como \texttt{TSI0\_CH3}, con
+        el buffer de entrada digital deshabilitado porque es una entrada
+        analógica, y el reloj del TSI desde el FRO de \qty{12}{\mega\hertz}
+        (el cristal externo que usa el ejemplo del SDK no está habilitado en
+        este proyecto).
+  \item Al arrancar, \texttt{init\_touch()} inicializa el TSI en modo
+        self-cap, con disparo por software y sin interrupciones, y mide la
+        \emph{base}: el promedio de 16 barridos sin tocar. Por eso no hay que
+        tocar el touchpad durante el reset.
+  \item Cada \qty{10}{\milli\second}, \texttt{touch\_actualizar()} dispara
+        un barrido por software y, en las vueltas siguientes del lazo,
+        consulta si terminó. Nunca espera: si un barrido no termina en
+        \qty{50}{\milli\second}, el touchpad se desactiva y se avisa por la
+        consola, y el resto del programa sigue funcionando.
+  \item Una lectura cuenta como toque si está más de 20 cuentas por debajo
+        de la base, y como liberación si vuelve a quedar a menos de 10
+        (histéresis). El cambio se acepta recién con 3 lecturas seguidas
+        (unos \qty{30}{\milli\second} de antirrebote), y sólo el paso de
+        \emph{sin tocar} a \emph{tocado} invierte la salida: mantener el
+        dedo apoyado no la vuelve a cambiar.
+  \item Al volver a habilitar el filtro se activa \texttt{cambio\_filtro},
+        así que la rutina del ADC borra los estados antes de la primera
+        muestra filtrada (sección~\ref{sec:cambio-filtro}) y el filtro no
+        arranca con la historia de antes de deshabilitarlo. A la salida se
+        ve el transitorio de $2D$ muestras del PA y del EB.
+\end{itemize}
+El umbral de 20 cuentas es el del ejemplo \texttt{tsi\_v6\_self\_cap} del
+SDK. Poniendo \texttt{DEPURAR\_TOUCH} en 1, el firmware imprime la cuenta
+cada \qty{200}{\milli\second}, lo que permite ajustarlo con la placa.
+
+El pin \pin{P1\_23}, que se usaba antes para elegir la salida, ya no está
+asignado en Config Tools, y la instancia GPIO1 de la herramienta Peripherals,
+que sólo habilitaba su interrupción (\texttt{GPIO10\_IRQn}), está
+deshabilitada. El firmware ya no tiene rutina para esa interrupción.
+
+\captura{img/pins-tsi-tp2.png}{Config Tools \textemdash{} Pins}{\pin{P1\_3}
+asignado a \texttt{TSI0\_CH3} (touchpad E1), con el buffer de entrada
+deshabilitado.}{fig:pins-tsi}
+
+\paragraph{LED.} El LED RGB conserva el color de cada frecuencia de muestreo
+(tabla~\ref{tab:fs}), y su parpadeo indica el estado del filtro
+(tabla~\ref{tab:led}). La base de tiempo es el SysTick, configurado para
+interrumpir cada \qty{1}{\milli\second} con la prioridad mínima. Sólo el
+lazo principal escribe el LED (\texttt{led\_actualizar()}), y sólo cuando
+cambia lo que tiene que mostrar, así que no hay dos rutinas escribiendo los
+mismos pines.
+
+\begin{table}[H]
+\centering
+\caption{Indicación del LED: el color da la $f_s$ y el parpadeo, el filtro.}
+\label{tab:led}
+\begin{tabular}{@{}l l r@{}}
+\toprule
+\textbf{Estado} & \textbf{LED} & \textbf{Semiperíodo}\\
+\midrule
+Salida sin filtrar      & Fijo                       & ---\\
+PB                      & Parpadea a \qty{1}{\hertz} & \qty{500}{\milli\second}\\
+PA                      & Parpadea a \qty{2}{\hertz} & \qty{250}{\milli\second}\\
+PBanda                  & Parpadea a \qty{4}{\hertz} & \qty{125}{\milli\second}\\
+EB                      & Parpadea a \qty{8}{\hertz} & \qty{62}{\milli\second}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La figura~\ref{fig:flujo-lazo} resume el lazo principal. Como la rutina del
+ADC lo interrumpe en cada muestra, el lazo corre en el tiempo que queda
+libre, que en el peor caso estimado (el PBanda a \qty{48}{\kilo\sps}) es más
+de un tercio del período de muestreo; de sobra para tareas que tienen
+tiempos de decenas de milisegundos.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  \node[inicio] (m0) {Lazo principal};
+  \node[proceso, below=of m0] (m1)
+     {\texttt{touch\_actualizar()}:\\cada \qty{10}{\milli\second} dispara un
+      barrido;\\al terminar, lee la cuenta};
+  \node[decision, below=0.6cm of m1] (m2) {¿Toque\\nuevo?};
+  \node[proceso, right=1.0cm of m2] (m3)
+     {Invierte \texttt{salida\_filtrada}\\(al habilitar,\\
+      \texttt{cambio\_filtro} $\leftarrow$ 1)};
+  \node[proceso, below=0.6cm of m2] (m4)
+     {\texttt{led\_actualizar()}:\\color según la $f_s$;\\parpadeo según el
+      filtro, o fijo};
+  \draw[flecha] (m0) -- (m1);
+  \draw[flecha] (m1) -- (m2);
+  \draw[flecha] (m2) -- node[etiqueta,above]{sí} (m3);
+  \draw[flecha] (m3) |- (m4);
+  \draw[flecha] (m2) -- node[etiqueta,right]{no} (m4);
+  \draw[flecha] (m4.west) -- ++(-0.8,0) |- (m1.west);
+\end{tikzpicture}
+\caption{Lazo principal: lectura del touchpad y control del LED.}
+\label{fig:flujo-lazo}
+\end{figure}
+
+\subsection{Formato q15 y conversiones}\label{sec:q15}
+
+Un número q15 es un entero de 16 bits con signo que representa el valor
+\begin{equation}
+  v_{\mathrm{q15}} = \frac{x_{q15}}{2^{15}} \in \left[-1,\; 1-2^{-15}\right].
+\end{equation}
+En resolución alta el LPADC entrega un resultado de \qty{16}{\bit} sin signo,
+$v \in [0,\, 65535]$. Como la entrada es single-ended, $v$ es unipolar; para
+centrarla en cero basta restar la mitad de escala:
+\begin{equation}
+  x[n] = v - 32768 \in [-32768,\; 32767].
+\end{equation}
+El resultado ocupa exactamente el rango de un \texttt{q15\_t}:
+\qty{0}{\volt} corresponde a $-1$, \qty{1.65}{\volt} a $0$ y
+\qty{3.3}{\volt} a casi $+1$.
+
+A la salida, la muestra filtrada $y[n]$ (en q15) se lleva a los
+\qty{12}{\bit} del DAC descartando los 4 bits menos significativos y
+volviendo a sumar la mitad de escala, con saturación:
+\begin{equation}
+  \text{código}_{\text{DAC}} =
+  \mathrm{sat}_{[0,\,4095]}\!\left(\frac{y[n]}{16} + 2048\right).
+\end{equation}
+La saturación es necesaria porque, a diferencia del Laboratorio 1, la salida
+ya no es una copia de la entrada: un filtro con ganancia mayor a 1 en alguna
+frecuencia, o el rizado de la banda de paso, puede llevar $y[n]$ fuera del
+rango.
+
+\subsection{Filtrado}
+
+\subsubsection{Procesamiento muestra a muestra}
+
+\texttt{arm\_fir\_q15()} implementa la ecuación~\eqref{eq:fir} sobre un
+bloque de \texttt{blockSize} muestras. Con \texttt{BLOCK\_SIZE = 1} se llama
+con una sola muestra, así que la salida se obtiene en la misma interrupción
+en que llega la entrada y el único retardo agregado es el del propio filtro.
+La función guarda internamente las últimas $N$ muestras en el buffer de
+estado, que cumple el papel de línea de retardo. En la implementación
+multitasa se usa así para el PB y el LPB, una vez por interrupción, y para
+$G$, a \qty{1}{\kilo\hertz}, una vez cada $M$ interrupciones. El resto del
+camino angosto (diezmador, interpolador y complemento) está escrito a mano
+(sección~\ref{sec:camino}).
+
+Internamente los coeficientes y las muestras son 1.15; cada producto es un
+2.30 y se acumula en 64 bits (formato 34.30), de modo que la suma no desborda
+aunque el filtro tenga miles de coeficientes. Al final el acumulador se
+trunca a 15 bits fraccionarios y se satura a 1.15. La única pérdida de
+precisión, además de la cuantización de los coeficientes, ocurre en ese
+último paso.
+
+\subsubsection{Estructura de implementación}
+
+\texttt{arm\_fir\_q15()} realiza el cálculo con la estructura directa: una
+línea de retardo de $N$ muestras y $N$ multiplicaciones por muestra de salida,
+una por coeficiente. Los cuatro filtros son de fase lineal, así que sus
+coeficientes son simétricos, $b_k = b_{N-1-k}$. La teoría presenta para ese
+caso la estructura directa de fase lineal, que suma primero las muestras que
+comparten coeficiente,
+\begin{equation}
+  y[n] = \sum_{k=0}^{N/2-1} b_k\,\bigl(x[n-k] + x[n-N+1+k]\bigr),
+\end{equation}
+y reduce las multiplicaciones a la mitad ($N$ par). \texttt{arm\_fir\_q15()}
+no aprovecha esa simetría, de modo que con ella se podría bajar la carga de
+CPU de la sección~\ref{sec:carga}. No se implementó porque exige escribir el
+filtro propio en lugar de usar la biblioteca, y porque la suma previa de dos
+muestras q15 puede desbordar los 16 bits y requiere trabajar en 32. Las
+sumas y los accesos a memoria no se reducen, así que el ahorro de ciclos
+sería menor al de multiplicaciones.
+
+\subsubsection{Camino multitasa con el diezmador repartido}\label{sec:camino}
+
+El camino angosto de la ecuación~\eqref{eq:complemento} está en
+\texttt{complemento\_multitasa()} (código~\ref{lst:camino}), que traduce a C
+el modelo muestra a muestra de \archivo{disenar_multitasa.m}.
+
+La forma directa de la ecuación~\eqref{eq:diezmado} calcula $u[k]$ en el
+instante de diezmado ($n = kM$), con $N_D$ productos de una sola vez. Como
+en ese mismo instante también se calcula $G$, esa muestra concentra casi
+todo el trabajo: en el PBanda a \qty{48}{\kilo\sps} serían 573 productos, un
+\qty{92}{\percent} del período de muestreo, cuando el promedio es de 347. En
+el procesamiento por muestras lo que importa es el pico, porque cada muestra
+tiene que terminar antes de que llegue la siguiente.
+
+Para evitarlo, el diezmador se calcula \emph{repartido}. Con $h_D$
+completado con ceros hasta $LM$ coeficientes ($L = \lceil N_D/M \rceil$),
+la muestra $x[n]$, de fase $p = n \bmod M$, aparece en la suma de $u[k]$
+para todos los $k$ con $0 \le kM - n < LM$. Esos $k$ son exactamente $L$:
+\begin{itemize}[nosep]
+  \item si $p = 0$: $u[n/M], u[n/M+1], \dots$, con los coeficientes
+        $h_D[0], h_D[M], \dots$;
+  \item si $p \ne 0$: $u[\lfloor n/M \rfloor + 1], u[\lfloor n/M \rfloor +
+        2], \dots$, con los coeficientes $h_D[M-p], h_D[2M-p], \dots$
+\end{itemize}
+Entonces, en lugar de guardar $x$ y hacer toda la suma al final, cada
+muestra que llega suma sus $L$ productos a $L$ acumuladores
+(\texttt{acc\_hd}, un anillo de $L$ posiciones). Cuando $p = 0$, el
+acumulador de $u[n/M]$ acaba de recibir su último término: se lee, se pone
+en cero para reutilizarlo y su valor pasa por $G$. El resultado es el mismo
+$u[k]$ con el mismo retardo $D$, con $L = 4$ productos por muestra en lugar
+de 181 cada 48 (a \qty{48}{\kilo\sps}).
+
+La interpolación de la ecuación~\eqref{eq:interpolacion} se calcula en forma
+polifásica. De los $LM$ coeficientes de $M\,h_D$, en cada muestra sólo los
+de la fase $p$ multiplican a valores distintos de cero:
+\begin{equation}
+  v[n] = M \sum_{m=0}^{L-1} h_D[p + mM]\; w\bigl[\lfloor n/M \rfloor - m\bigr],
+\end{equation}
+así que también cuesta $L$ productos por muestra. Las salidas de $G$ se
+guardan en \texttt{hist\_w} ($L$ posiciones, la más nueva primero) y la
+entrada en \texttt{hist\_x}, un buffer circular de
+$\texttt{LONG\_HIST\_X} = \max D + 1$ muestras del que se lee $x[n-D]$.
+
+Los productos se acumulan en 64 bits y se llevan a q15 con un
+desplazamiento de 15 bits y saturación, como en CMSIS-DSP. La ganancia $M$
+del interpolador se aplica sobre el acumulador, antes del desplazamiento:
+los coeficientes de $h_D$ entran en q15 con margen, mientras que los de
+$M\,h_D$ llegan a casi 1 y no lo tendrían.
+
+\subsubsection{Instancias de los filtros}\label{sec:instancias}
+
+Los filtros que se calculan con CMSIS-DSP se representan con estructuras
+\texttt{arm\_fir\_instance\_q15} (cantidad de coeficientes, puntero a los
+coeficientes y puntero al buffer de estado). Al arrancar,
+\texttt{init\_filtros()} inicializa \texttt{fir\_pb[fs]} y
+\texttt{fir\_lpb[fs]} a partir de las tablas \texttt{pb\_tabla},
+\texttt{pb\_taps}, \texttt{lpb\_tabla} y \texttt{lpb\_taps}, y
+\texttt{fir\_g[0]} y \texttt{fir\_g[1]} con \texttt{G\_PA} y \texttt{G\_EB}.
+El camino angosto activo se describe con una estructura
+\texttt{camino\_angosto\_t} (puntero a $h_D$, $M$, $L$, $D$ y la instancia
+de $G$), que se completa al cambiar de filtro a partir de las tablas del
+archivo de cabecera.
+
+Como hay un único filtro activo a la vez, los filtros de cada grupo
+comparten el buffer de estado: \texttt{estado\_fs}, dimensionado para el más
+largo de los PB y LPB (338 coeficientes), y \texttt{estado\_g} (188). En total
+el estado ocupa unos 10~KiB de RAM, casi todo en \texttt{hist\_x} (\num{4645}
+muestras, por el EB a \qty{48}{\kilo\sps}), frente a los \num{15210} bytes
+del buffer de estado de la implementación previa.
+
+\subsubsection{Cambio sincronizado de filtro}\label{sec:cambio-filtro}
+
+Las rutinas de las teclas no tocan el filtro directamente: sólo actualizan
+su variable de estado y ponen en 1 la bandera \texttt{cambio\_filtro}. La
+rutina del ADC revisa la bandera antes de procesar cada muestra y, si está
+activa, llama a \texttt{aplicar\_seleccion()}, que:
+
+\begin{enumerate}[nosep]
+  \item fija el tipo de filtro activo, la instancia directa
+        (\texttt{fir\_pb} o \texttt{fir\_lpb} de la $f_s$ activa) y los
+        parámetros del camino angosto ($h_D$, $M$, $L$, $D$ y $G$);
+  \item borra los buffers de estado y las historias del camino angosto, y
+        pone en cero los contadores de fase, para que el nuevo filtro no
+        arranque con la historia del anterior (que puede haber sido
+        calculada a otra $f_s$ o con otra estructura).
+\end{enumerate}
+
+Así el cambio ocurre siempre entre dos muestras y nunca en medio de un
+cálculo. Como todas las interrupciones tienen la misma prioridad, tampoco
+puede pasar que una tecla modifique el estado mientras la rutina del ADC lo
+está leyendo. El borrado del estado produce, después de cada cambio, un
+transitorio tan largo como la respuesta impulsional del filtro activo ($2D$
+muestras en el PA y el EB), durante el cual las líneas de retardo se vuelven
+a llenar.
+
+\subsection{Rutinas de interrupción}
+
+La figura~\ref{fig:flujo-adc} muestra la rutina del ADC, que se ejecuta una
+vez por muestra, y la figura~\ref{fig:flujo-teclas} las de las teclas.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  \node[inicio]  (a0) {\texttt{ADC0\_IRQHandler}};
+  \node[proceso, below=of a0] (a1) {Leer y limpiar banderas\\de trigger y de estado};
+  \node[decision, below=of a1] (a2) {¿Hay resultado\\en la FIFO0?};
+  \node[decision, below=0.6cm of a2] (a3) {¿\texttt{cambio\_filtro}?};
+  \node[proceso, right=1.0cm of a3] (a4)
+     {\texttt{aplicar\_seleccion()}\\fija el filtro y\\borra los estados};
+  \node[proceso, below=0.6cm of a3] (a5)
+     {$x[n] \leftarrow \mathrm{res} - 32768$\\\texttt{buffer\_in[i]} $\leftarrow x[n]$};
+  \node[decision, below=0.6cm of a5] (a6) {¿Salida\\filtrada?};
+  \node[proceso, minimum width=3.0cm, below=0.7cm of a6, xshift=-2.3cm] (a7)
+     {$y[n] \leftarrow x[n]$};
+  \node[proceso, minimum width=3.0cm, below=0.7cm of a6, xshift=2.3cm] (a8)
+     {\texttt{filtrar()}\\(1 muestra)};
+  \node[proceso, minimum width=6.4cm, below=2.0cm of a6] (a9)
+     {\texttt{buffer\_out[i]} $\leftarrow y[n]$\\
+      \texttt{DAC\_SetData}$\big(\mathrm{sat}(y[n]/16+2048)\big)$};
+  \node[proceso, below=of a9] (a10) {$i \leftarrow (i+1) \bmod 512$};
+  \node[inicio,  below=of a10] (a11) {Retorno};
+
+  \draw[flecha] (a0) -- (a1);
+  \draw[flecha] (a1) -- (a2);
+  \draw[flecha] (a2) -- node[etiqueta,right]{sí} (a3);
+  \draw[flecha] (a3) -- node[etiqueta,above]{sí} (a4);
+  \draw[flecha] (a4) |- (a5);
+  \draw[flecha] (a3) -- node[etiqueta,right]{no} (a5);
+  \draw[flecha] (a5) -- (a6);
+  \draw[flecha] (a6) -| node[etiqueta,above,pos=0.2]{no} (a7);
+  \draw[flecha] (a6) -| node[etiqueta,above,pos=0.2]{sí} (a8);
+  \draw[flecha] (a7) -- (a7 |- a9.north);
+  \draw[flecha] (a8) -- (a8 |- a9.north);
+  \draw[flecha] (a9) -- (a10);
+  \draw[flecha] (a10) -- (a11);
+  % salida "no" de la FIFO: pasa por fuera, a la izquierda
+  \draw[flecha] (a2.west) -- node[etiqueta,above,pos=0.3]{no} (-4.4,0 |- a2.west)
+                |- (a11.west);
+\end{tikzpicture}
+\caption{Diagrama de flujo de la rutina de fin de conversión del ADC. El
+\emph{bypass} también se usa mientras \texttt{filtros\_listos} es falso
+(antes de \texttt{init\_filtros()}).}
+\label{fig:flujo-adc}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  % ---------------- ISR de SW3 ----------------
+  \node[inicio] (b0) {\texttt{GPIO0\_INT\_0} (SW3)};
+  \node[proceso, below=of b0] (b1) {\texttt{state\_counter} $\leftarrow$\\(\texttt{state\_counter}+1) mod 5};
+  \node[proceso, below=of b1] (b2) {\texttt{setup\_new\_match}\\(\texttt{sample\_vel[state]})};
+  \node[proceso, below=of b2] (b4) {\texttt{cambio\_filtro} $\leftarrow$ 1};
+  \node[proceso, below=of b4] (b5) {Limpiar bandera};
+  \draw[flecha] (b0) -- (b1);
+  \draw[flecha] (b1) -- (b2);
+  \draw[flecha] (b2) -- (b4);
+  \draw[flecha] (b4) -- (b5);
+
+  % ---------------- ISR de SW2 ----------------
+  \begin{scope}[xshift=6.5cm]
+    \node[inicio] (c0) {\texttt{GPIO0\_INT\_1} (SW2)};
+    \node[proceso, below=of c0] (c1) {\texttt{filter\_counter} $\leftarrow$\\(\texttt{filter\_counter}+1) mod 4};
+    \node[proceso, below=of c1] (c2) {\texttt{cambio\_filtro} $\leftarrow$ 1};
+    \node[proceso, below=of c2] (c3) {Limpiar bandera};
+    \draw[flecha] (c0) -- (c1);
+    \draw[flecha] (c1) -- (c2);
+    \draw[flecha] (c2) -- (c3);
+  \end{scope}
+\end{tikzpicture}
+\caption{Diagramas de flujo de las rutinas de las teclas. Izquierda: cambio
+de velocidad (SW3). Derecha: cambio de filtro (SW2). El touchpad y el LED se
+atienden desde el lazo principal (figura~\ref{fig:flujo-lazo}).}
+\label{fig:flujo-teclas}
+\end{figure}
+
+\subsection{Restricción de tiempo real}\label{sec:carga}
+
+Todo el procesamiento de una muestra tiene que terminar antes de que llegue
+la siguiente. Con el núcleo a $f_{\text{CPU}} = \qty{150}{\mega\hertz}$, los
+ciclos disponibles por muestra son $f_{\text{CPU}}/f_s$, y el filtro consume
+aproximadamente $c\,N$ ciclos, donde $c$ es el costo por coeficiente de
+\texttt{arm\_fir\_q15()}. La fracción del período de muestreo que ocupa el
+filtro es entonces
+\begin{equation}
+  U = \frac{c\, N\, f_s}{f_{\text{CPU}}},
+  \label{eq:carga}
+\end{equation}
+y el sistema funciona en tiempo real sólo si $U < 1$ (con algo de margen para
+el resto de la rutina y las teclas). La tabla~\ref{tab:carga} aplica la
+ecuación~\eqref{eq:carga} a los filtros directos de la implementación previa
+(tabla~\ref{tab:taps}) con $c = \ciclosportap$ ciclos por coeficiente, la
+estimación que usa \archivo{generar_filtros.m}.
+
+\begin{table}[H]
+\centering
+\caption{Implementación previa (FIR directo, ventana de Kaiser): carga
+estimada de CPU, $U$ [\%], con $c = \ciclosportap$ ciclos por coeficiente.
+En rojo, las combinaciones que no entran en tiempo real.}
+\label{tab:carga}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{Ciclos/muestra} & \textbf{PB} & \textbf{PA} &
+\textbf{PBanda} & \textbf{EB}\\
+\midrule
+\filacarga{8000} {64} {822} {822} {1270}
+\filacarga{16000}{124}{1642}{1640}{2536}
+\filacarga{22000}{170}{2256}{2254}{3486}
+\filacarga{44000}{340}{4508}{4508}{6970}
+\filacarga{48000}{370}{4918}{4916}{7604}
+\bottomrule
+\end{tabular}
+\end{table}
+
+Según esta estimación, a \qty{8}{\kilo\sps} los cuatro filtros entran con
+holgura y el PB entra a todas las velocidades, pero el EB supera el período de muestreo a partir de
+\qty{16}{\kilo\sps} y el PA y el PBanda a partir de \qty{22}{\kilo\sps}. La carga crece con $f_s^2$: al duplicar $f_s$ se duplica
+la cantidad de coeficientes (sección~\ref{sec:taps-previa}) y también la
+cantidad de muestras por segundo. Con el diseño equiripple de orden mínimo
+(tabla~\ref{tab:taps-eq}) el panorama casi no cambia: entran 12 de las 20
+combinaciones en lugar de 10.
+
+Cuando $U > 1$ la rutina del ADC todavía no terminó cuando llega el disparo
+siguiente. El disparo lo genera el hardware, así que el ADC sigue
+convirtiendo, pero la interrupción queda pendiente y se atiende recién al
+salir de la actual: se pierden muestras y la salida se actualiza a una tasa
+menor que $f_s$. Además, el lazo principal (touchpad y LED) corre sólo con
+el tiempo que deja la rutina del ADC: con $U$ cercano a 1 casi no se ejecuta,
+el LED deja de parpadear y el cambio de filtro parece no responder. Eso se
+observó en la placa con la primera versión de la implementación multitasa
+(sección~\ref{sec:carga-medida}).
+
+\paragraph{Carga de la implementación multitasa.} En la implementación
+multitasa el costo por muestra ya no es $N$. En cada muestra de entrada, el
+diezmador repartido hace $L$ productos y el interpolador otros $L$, y una de
+cada $M$ muestras se calcula además $G$, con $N_G$ productos (contando el
+cero de relleno). El peor caso por muestra es entonces
+\begin{equation}
+  \text{MAC}_{\text{pico}} = 2L + N_G \quad
+  (+\,N_{\text{LPB}} \text{ en el PBanda}),
+  \label{eq:carga-multitasa}
+\end{equation}
+que no depende de $f_s$ en el PA y el EB (58 y 196 productos), porque $G$
+trabaja siempre a \qty{1}{\kilo\hertz} y $L = 4$ para las cinco velocidades.
+La tabla~\ref{tab:carga-multitasa} aplica la ecuación~\eqref{eq:carga} con
+esos productos en lugar de $N$.
+
+\begin{table}[H]
+\centering
+\caption{Implementación multitasa: carga estimada de CPU en la peor muestra,
+$U$ [\%], con $c = \ciclosportap$ ciclos por producto y el diezmador
+repartido.}
+\label{tab:carga-multitasa}
+\begin{tabular}{@{}l r r r r r@{}}
+\toprule
+\textbf{$f_s$} & \textbf{Ciclos/muestra} & \textbf{PB} & \textbf{PA} &
+\textbf{PBanda} & \textbf{EB}\\
+\midrule
+\filacarga{8000} {50} {58}{116}{196}
+\filacarga{16000}{94} {58}{172}{196}
+\filacarga{22000}{130}{58}{214}{196}
+\filacarga{44000}{256}{58}{368}{196}
+\filacarga{48000}{280}{58}{396}{196}
+\bottomrule
+\end{tabular}
+\end{table}
+
+Con $c = \ciclosportap$ las 20 combinaciones entran en tiempo real y el peor
+caso es el PBanda a \qty{48}{\kilo\sps}, con un \qty{63}{\percent}, que lo
+domina el LPB directo (338 coeficientes), no el camino angosto. Sin repartir
+el diezmador, ese caso llegaría al \qty{92}{\percent} en la muestra en que se
+diezma (sección~\ref{sec:camino}). Es una estimación: el valor de $c$ real
+resultó muy distinto, como muestra la sección siguiente.
+
+\subsubsection{Carga medida}\label{sec:carga-medida}
+
+La rutina del ADC mide su duración con el contador de ciclos del DWT
+(\texttt{MEDIR\_CICLOS\_ISR} en \archivo{source/TP2.c}): guarda el máximo desde
+el último cambio de filtro o de $f_s$ (\texttt{isr\_ciclos\_max}) y cuenta las
+veces que duró más que el período de muestreo (\texttt{isr\_excesos}). Se leen
+desde el depurador. La tabla~\ref{tab:carga-medida} resume las medidas en los
+dos casos con filtro directo a $f_s$ más exigentes, sin señal de entrada (el
+costo del FIR no depende del dato).
+
+\begin{table}[H]
+\centering
+\caption{Ciclos máximos de la rutina del ADC (\texttt{-O2}). El presupuesto es
+$f_{\text{CPU}}/f_s$. La primera versión usa \texttt{arm\_fir\_q15()} con
+\texttt{blockSize = 1}; la segunda, \texttt{fir\_muestra()}.}
+\label{tab:carga-medida}
+\begin{tabular}{@{}l l r r r r@{}}
+\toprule
+\textbf{Caso} & \textbf{FIR} & \textbf{Máx.} & \textbf{Presupuesto} &
+\textbf{$U$ pico} & \textbf{Excesos}\\
+\midrule
+PB, \qty{44}{\kilo\sps}     & CMSIS      & \num{3378}  & \num{3409} & \qty{99}{\percent}  & 0\\
+PB, \qty{44}{\kilo\sps}     & propio     & \num{1189}  & \num{3409} & \qty{35}{\percent}  & 0\\
+PBanda, \qty{48}{\kilo\sps} & CMSIS      & \num{5364}  & \num{3125} & \qty{172}{\percent} & \num{85812}\\
+PBanda, \qty{48}{\kilo\sps} & propio     & \num{2034}  & \num{3125} & \qty{65}{\percent}  & 0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{nota}[El costo por coeficiente: medición y causa]
+Con \texttt{arm\_fir\_q15()} el costo medido fue de unos 10 ciclos por
+coeficiente (\num{3378}/340 en el PB a \qty{44}{\kilo\sps}), el doble de los
+$c = 5$ estimados, aun con la biblioteca compilada con \texttt{-O2}. La causa
+está en el código de la biblioteca: con \texttt{blockSize = 1} no se usa el
+lazo SIMD sino el escalar (una carga de 16 bits, un producto y una suma de
+64 bits por coeficiente), y al final de cada llamada se copian de a una las
+$N-1$ muestras del estado. Con el PB a \qty{44}{\kilo\sps} la rutina ocupó el
+\qty{99}{\percent} del período; con el PBanda a \qty{48}{\kilo\sps} excedió el
+período (hasta el \qty{172}{\percent}) y el lazo principal no corrió: el LED
+se quedaba fijo y el cambio de filtro con el SW2 parecía requerir dos
+pulsaciones, aunque el cambio se había hecho. Sólo ocurría con el PB y el
+PBanda, que son los que calculan un FIR largo a $f_s$.
+
+Se reemplazó esa llamada por \texttt{fir\_muestra()}, que da el mismo
+resultado (acumulador de 64 bits, desplazamiento de 15 bits y saturación) con
+dos cambios: guarda la historia duplicada (\texttt{hist[p]} y
+\texttt{hist[p + N]}), de modo que la ventana es contigua y no se copia nada,
+y usa \texttt{\_\_SMLALD}, que hace dos productos por instrucción. Un primer
+intento con \texttt{read\_q15x2()} de CMSIS empeoró la rutina al doble
+(\num{6771} ciclos en el PB a \qty{44}{\kilo\sps}): esa función usa
+\texttt{memcpy()}, y como el proyecto compila con \texttt{-fno-builtin} cada
+lectura era una llamada real a la biblioteca. Con una lectura de 32 bits
+directa el costo bajó a unos 3,5 ciclos por coeficiente, 2,8 veces menos que
+con CMSIS, y el peor caso quedó en el \qty{65}{\percent}.
+
+Esto matiza lo que advierte la teoría sobre usar la biblioteca antes que un
+lazo propio: vale para tamaños de bloque razonables, pero con una sola muestra
+por llamada y el SIMD sin usar, un lazo escrito para ese caso es más rápido.
+\end{nota}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Implementación}\label{sec:implementacion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+La lógica propia está en \archivo{source/TP2.c} y los coeficientes en
+\archivo{source/filtros_multitasa.h}; el resto del proyecto es código generado por
+Config Tools y drivers del SDK. El proyecto completo está referenciado en el
+Anexo~\ref{sec:codigo}.
+
+\subsection{Constantes y variables globales}
+
+Los valores de match se mantienen en \texttt{sample\_vel}, igual que en el
+Laboratorio 1. \texttt{filtros\_multitasa.h} define \texttt{NUM\_FS} (5),
+\texttt{NUM\_TIPOS} (4), \texttt{F\_BAJA\_HZ} y las constantes que
+dimensionan las instancias y los buffers (\texttt{MAX\_TAPS\_FS},
+\texttt{LONG\_HIST\_X} y \texttt{MAX\_HIST\_W}). Las variables que comparten
+las rutinas de interrupción (\texttt{state\_counter},
+\texttt{filter\_counter}, \texttt{salida\_filtrada}, \texttt{cambio\_filtro}
+y \texttt{filtros\_listos}) se declaran \texttt{volatile}. El estado del
+camino angosto (\texttt{camino}, \texttt{hist\_x}, \texttt{acc\_hd},
+\texttt{hist\_w} y los contadores \texttt{fase} y \texttt{ranura}) sólo lo
+usa la rutina del ADC, y el del touchpad (\texttt{touch\_base},
+\texttt{touch\_tocado} y los demás \texttt{touch\_*}), sólo el lazo
+principal. \texttt{ms\_ticks}, que incrementa el SysTick, es la base de
+tiempo del touchpad y del LED; \texttt{semiperiodo\_led\_ms} guarda el
+semiperíodo de parpadeo de cada filtro (tabla~\ref{tab:led}). Los buffers \texttt{buffer\_in} y \texttt{buffer\_out}
+guardan las últimas 512 muestras de entrada y de salida, lo que permite
+inspeccionarlas con el depurador.
+
+\subsection{Programa principal}
+
+\texttt{main()} inicializa pines y relojes, luego el DAC
+(\texttt{init\_dac()}) y el pin de medición (\texttt{init\_pin\_medicion()})
+y recién después los periféricos generados por Config
+Tools, por el motivo explicado en la sección~\ref{sec:cambios-perif}. A
+continuación inicializa las instancias de filtro, activa
+\texttt{cambio\_filtro} para que la primera muestra aplique la selección
+inicial, configura el SysTick para interrumpir cada \qty{1}{\milli\second},
+inicializa el touchpad (\texttt{init\_touch()}, que mide la base) y entra en
+el lazo principal, que lee el touchpad y actualiza el LED
+(figura~\ref{fig:flujo-lazo}).
+
+\subsection{Inicialización de los filtros}
+
+\texttt{init\_filtros()} llama a \texttt{arm\_fir\_init\_q15()} para las 12
+instancias de CMSIS-DSP: el PB y el LPB de cada $f_s$, con sus tablas y el
+buffer \texttt{estado\_fs}, y los dos filtros $G$, con \texttt{estado\_g}.
+Si alguna inicialización falla (por ejemplo, por una cantidad impar de
+coeficientes), lo informa por la consola de depuración. Al terminar pone
+\texttt{filtros\_listos} en 1; hasta ese momento la rutina del ADC no
+filtra ni aplica cambios de filtro.
+
+\subsection{Rutina del ADC}
+
+El código~\ref{lst:isr} muestra el núcleo de la rutina del ADC. Antes de
+procesar la muestra se aplica, si corresponde, el cambio de filtro pendiente;
+después se convierte a q15, se filtra (o se copia) y se envía al DAC. Si
+\texttt{MEDIR\_TIEMPO\_ISR} vale 1, la rutina pone en 1 el pin
+\pin{P0\_26} al entrar y en 0 al salir, para medir su duración
+(sección~\ref{sec:verificacion}). \texttt{salida\_filtrada} la cambia el
+touchpad desde el lazo principal (sección~\ref{sec:habilitacion}).
+
+\begin{lstlisting}[caption={Procesamiento de una muestra en \texttt{ADC0\_IRQHANDLER()} (\texttt{source/TP2.c}).},label={lst:isr}]
+if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
+  if (cambio_filtro) {
+    aplicar_seleccion();
+  }
+
+  /* ADC de 16 bits: 0..65535 -> Q15 centrado en 0 */
+  buffer_in[index_buffer] = (q15_t)((int32_t)result.convValue - 32768);
+
+  if (salida_filtrada && filtros_listos) {
+    buffer_out[index_buffer] = filtrar(buffer_in[index_buffer]);
+  } else {
+    buffer_out[index_buffer] = buffer_in[index_buffer];      /* bypass */
+  }
+
+  /* Q15 -> 12 bits para el DAC */
+  int32_t out_dac = ((int32_t)buffer_out[index_buffer] / 16) + ADC_MID;
+  if (out_dac < 0)    out_dac = 0;
+  if (out_dac > 4095) out_dac = 4095;
+  DAC_SetData(DAC0, (uint16_t)out_dac);
+
+  index_buffer = (index_buffer + 1) % BUFFER_SIZE;
+}
+\end{lstlisting}
+
+\texttt{filtrar()} elige según el tipo activo: el PB es una llamada a
+\texttt{fir\_muestra()} (FIR de una muestra con los coeficientes de la
+instancia de CMSIS, sección~\ref{sec:carga-medida}); el PA y el EB, una llamada a
+\texttt{complemento\_multitasa()}; y el PBanda, las dos en cascada (con el
+LPB). El código~\ref{lst:camino} es el camino angosto con el diezmador
+repartido de la sección~\ref{sec:camino}.
+
+\begin{lstlisting}[caption={Camino angosto: \texttt{complemento\_multitasa()} (\texttt{source/TP2.c}).},label={lst:camino}]
+static q15_t complemento_multitasa(q15_t x) {
+  const camino_angosto_t *c = &camino;
+  const uint16_t M = c->m;
+  const uint16_t L = c->l;
+
+  pos_x = (pos_x + 1 == LONG_HIST_X) ? 0 : pos_x + 1;
+  hist_x[pos_x] = x;
+
+  /* x[n] aporta a los L diezmados pendientes (HD repartido) */
+  uint16_t j = (fase == 0) ? 0 : M - fase;
+  uint16_t r = (fase == 0) ? ranura : ((ranura + 1 == L) ? 0 : ranura + 1);
+  for (uint16_t i = 0; i < L; i++) {
+    acc_hd[r] += (int32_t)c->hd[j] * x;
+    j += M;
+    r = (r + 1 == L) ? 0 : r + 1;
+  }
+
+  /* Instante de diezmado: u[n/M] esta completo y pasa por G */
+  if (fase == 0) {
+    q15_t u = (q15_t)__SSAT((int32_t)(acc_hd[ranura] >> 15), 16);
+    q15_t w;
+    acc_hd[ranura] = 0;
+    w = fir_muestra(c->g, hist_g, &pos_g, u);
+    for (uint16_t m = L - 1; m > 0; m--) {
+      hist_w[m] = hist_w[m - 1];
+    }
+    hist_w[0] = w;
+  }
+
+  /* Interpolador polifasico: v[n] = M * sum_m HD[p + mM] w[n/M - m] */
+  int64_t acc = 0;
+  const q15_t *h = &c->hd[fase];
+  for (uint16_t m = 0; m < L; m++) {
+    acc += (int32_t)h[m * M] * hist_w[m];
+  }
+  int32_t v = __SSAT((int32_t)((acc * M) >> 15), 16);
+
+  if (++fase == M) {
+    fase = 0;
+    ranura = (ranura + 1 == L) ? 0 : ranura + 1;
+  }
+
+  int32_t k = (int32_t)pos_x - c->d;
+  if (k < 0) {
+    k += LONG_HIST_X;
+  }
+  return (q15_t)__SSAT((int32_t)hist_x[k] - v, 16);
+}
+\end{lstlisting}
+
+\subsection{Rutinas de las teclas y cambio de velocidad}
+
+La rutina de SW3 avanza \texttt{state\_counter} en forma circular y
+reprograma el CTIMER0 con \texttt{setup\_new\_match()}, igual que en el
+Laboratorio 1, y además activa \texttt{cambio\_filtro} para que se carguen
+los coeficientes de la nueva $f_s$. A diferencia del Laboratorio 1, no toca
+el LED: el lazo principal ve el nuevo \texttt{state\_counter} y cambia el
+color con \texttt{set\_state()}. La rutina de SW2 avanza
+\texttt{filter\_counter} módulo 4 y activa la misma bandera; el lazo
+principal cambia también la frecuencia de parpadeo. El touchpad no tiene
+rutina de interrupción: se lee desde el lazo principal
+(sección~\ref{sec:habilitacion}).
+
+La macro \texttt{FILA\_FILTRO()} permite, poniendo \texttt{SOLO\_8K} en 1,
+usar siempre los coeficientes diseñados para \qty{8}{\kilo\sps} sin importar
+la velocidad activa. Sirve para observar cómo se desplazan en frecuencia las
+bandas de un filtro digital cuando se lo usa a una $f_s$ distinta de la de
+diseño: todas las frecuencias características escalan en proporción a $f_s$.
+En la implementación multitasa la fila de \qty{8}{\kilo\sps} también fija
+$M = 8$, así que la tasa baja pasa a ser $f_s/8$ y el camino angosto escala
+igual que el resto del filtro.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Verificación}\label{sec:verificacion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Procedimiento}
+
+\begin{enumerate}[nosep]
+  \item Conectar el generador a \texttt{J4[2]} (ADC0\_A0) con una senoidal
+        de 1 V y un \emph{offset} que la mantenga entre 0 y
+        \qty{3.3} V.
+  \item Canal 1 del osciloscopio en la entrada, canal 2 en \texttt{J1[4]}
+        (DAC0\_OUT).
+  \item Con $f_s = \qty{8}{\kilo\sps}$, observar la señal sin filtrar
+        (tocando el touchpad E1, con el LED fijo) y recorrer los cuatro
+        filtros con SW2, verificando la frecuencia de parpadeo del LED
+        (tabla~\ref{tab:led}); para cada filtro, barrer la frecuencia del generador midiendo la
+        amplitud de la salida. Calcular la ganancia
+        $|H| = 20\log_{10}(V_{\text{out}}/V_{\text{in}})$ y compararla con la
+        respuesta diseñada.
+  \item Repetir para otras $f_s$ y verificar que la respuesta en hertz se
+        mantiene (o, si no entra en tiempo real, documentar qué ocurre).
+  \item Medir el tiempo de ejecución de la rutina del ADC con el pin de
+        medición \pin{P0\_26} (\texttt{J2[10]}): con
+        \texttt{MEDIR\_TIEMPO\_ISR} en 1, la rutina lo pone en 1 al entrar y
+        en 0 al salir, así que el ancho del pulso es su duración. Conectar el
+        canal 2 del osciloscopio a ese pin y medir el ancho en la peor
+        muestra, que en los filtros multitasa es la de diezmado (el pulso
+        más ancho de cada grupo de $M$). La cantidad de ciclos es el ancho
+        por $f_{\text{CPU}} = \qty{150}{\mega\hertz}$, y el costo por
+        producto, la diferencia con la rutina sin filtrar dividida por la
+        cantidad de productos de la ecuación~\eqref{eq:carga-multitasa}.
+\end{enumerate}
+
+\subsection{Verificación por simulación}
+
+Antes de las mediciones en la placa se verificó el código de filtrado en la
+PC. Las funciones de filtrado de \archivo{source/TP2.c}, sin modificar, se
+compilaron con \texttt{gcc} junto con \archivo{filtros_multitasa.h} y una
+versión mínima de \texttt{arm\_fir\_q15()} con la misma aritmética que la de
+CMSIS-DSP (acumulador de 64 bits, desplazamiento de 15 bits y saturación).
+Para los 20 filtros se procesaron \num{30000} muestras de ruido, más del
+doble de la respuesta impulsional más larga, y la salida se comparó con el
+modelo de referencia en punto flotante con los mismos coeficientes q15. La
+diferencia máxima fue de \num{2.6}~LSB, que es lo que aportan los redondeos
+a q15 del diezmador, de $G$ y del interpolador. Un error de índice en el
+polifásico o en $D$ habría producido diferencias del orden de la señal.
+
+\subsection{Respuesta en frecuencia medida}
+
+Las frecuencias de prueba se eligen alrededor de los bordes de la consigna:
+\qty{50}{\hertz} (centro del EB y comienzo de la banda de paso del PA), unos
+\qty{20}{\hertz} (rechazo del PA y del PBanda), \qty{35}{\hertz} (corte del
+PA y del PBanda, cerca de \qty{-6}{\deci\bel}), \qty{1}{\kilo\hertz} (banda
+de paso de los cuatro filtros), y \qty{3.5}{\kilo\hertz} y
+\qty{3.9}{\kilo\hertz} (corte del PBanda y rechazo del PB). Para las frecuencias de
+pocas decenas de hertz hay que usar acoplamiento DC en el osciloscopio: el
+acoplamiento AC tiene un corte de algunos hertz que falsearía la medición.
+
+\begin{table}[H]
+\centering
+\caption{Ganancia medida a $f_s = \qty{8}{\kilo\sps}$.}
+\label{tab:respuesta}
+\begin{tabular}{@{}r r r r r@{}}
+\toprule
+\textbf{$f$ [Hz]} & \textbf{PB [dB]} & \textbf{PA [dB]} &
+\textbf{PBanda [dB]} & \textbf{EB [dB]}\\
+\midrule
+\num{20}   & -0.42 & -28.66 & -31.42 & 0\\
+\num{35}   & -0.42 & -5.84 & -5.66 & -7.21\\
+\num{50}   & -0.23 & -4.82 & -8.64 & -31.48\\
+\num{1000} & -0.54 & -0.27 & -0.30 & 0.06\\
+\num{3500} & -0.21 & 0.12 & -5.39 & 0.12\\
+\num{3900} & -28.43 & 0.12 & -29 & 0.15\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\captura{img/osc-bypass.jpeg}{Osciloscopio}{Entrada (canal 1) y salida del
+DAC (canal 2) en \emph{bypass}.}{fig:osc-bypass}
+
+\captura{img/osc-pb.jpeg}{Osciloscopio}{Entrada y salida con el filtro pasa
+bajos y señal de entrada de 20 Hz.}{fig:osc-pb}
+
+\captura{img/osc-pa.jpeg}{Osciloscopio}{Entrada y salida con el filtro pasa
+altos y señal de entrada de 20 Hz.}{fig:osc-pa}
+
+\captura{img/osc-pbanda.jpeg}{Osciloscopio}{Entrada y salida con el filtro
+pasa banda y señal de entrada de 20 Hz.}{fig:osc-pbanda}
+
+\captura{img/osc-eb.jpeg}{Osciloscopio}{Entrada y salida con el filtro
+elimina banda y señal de entrada de 20 Hz.}{fig:osc-eb}
+
+\subsection{Cumplimiento de los requerimientos}
+
+\begin{table}[H]
+\centering
+\caption{Verificación de los requerimientos de la consigna.}
+\label{tab:cumplimiento}
+\begin{tabular}{@{}l p{6.8cm} l l@{}}
+\toprule
+\textbf{Req.} & \textbf{Cómo se implementa} & \textbf{Evidencia} & \textbf{Resultado}\\
+\midrule
+\ref{req:fs}           & Cadena CTIMER0 + INPUTMUX + LPADC0 del Laboratorio~1;
+                         SW3 elige la $f_s$; \texttt{buffer\_in[512]}
+                       & Tabla~\ref{tab:fs} & \checkmark\\
+\ref{req:diseno}       & 20 filtros (4 tipos $\times$ 5 $f_s$): PB directo y
+                         PA, PBanda y EB multitasa, diseñados y verificados en
+                         q15 con \archivo{disenar_multitasa.m}
+                       & Tablas~\ref{tab:specs} y~\ref{tab:compuestos} & \checkmark\\
+\ref{req:cmsis}        & Muestra a muestra, de \texttt{buffer\_in} a
+                         \texttt{buffer\_out}: \texttt{arm\_fir\_q15()} con
+                         \texttt{BLOCK\_SIZE = 1} y el camino multitasa
+                       & Tabla~\ref{tab:respuesta} & \checkmark\\
+\ref{req:tecla-filtro} & El touchpad E1 (TSI0) alterna entre filtrar y
+                         hacer \emph{bypass} (copia de \texttt{buffer\_in} a
+                         \texttt{buffer\_out}); SW2 elige el
+                         filtro (\texttt{filter\_counter} módulo 4) y el LED
+                         lo indica con su parpadeo
+                       & Demostración & \checkmark\\
+\ref{req:dac}          & \texttt{DAC\_SetData()} con la muestra de
+                         \texttt{buffer\_out} en cada interrupción del ADC
+                       & Figura~\ref{fig:osc-bypass} & \checkmark\\
+\ref{req:osc}          & Entrada y salida en los canales 1 y 2 del osciloscopio
+                       & Figuras~\ref{fig:osc-pb} a~\ref{fig:osc-eb} & \checkmark\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\ejercicio{Conclusiones}
+
+Se implementó sobre la FRDM-MCXN947 una aplicación que filtra en tiempo real
+la señal adquirida por el LPADC0 con filtros FIR pasa bajos, pasa altos, pasa
+banda y elimina banda, diseñados en MATLAB y ejecutados muestra a muestra en
+aritmética q15, con \texttt{arm\_fir\_q15()} de CMSIS-DSP y una estructura
+multitasa para las bandas angostas. Con SW3 se recorren
+las cinco frecuencias de muestreo del Laboratorio 1, con SW2 se elige uno de
+los cuatro filtros y con el touchpad E1 se pasa de la señal filtrada a la
+señal sin filtrar, mientras el LED indica la frecuencia de muestreo con su
+color y el filtro con su parpadeo; para cada combinación
+se usan coeficientes diseñados para la $f_s$ activa.
+
+Las decisiones principales del diseño fueron:
+\begin{itemize}[nosep]
+  \item \textbf{Procesamiento multitasa para las bandas angostas.} El PA, el
+        PBanda y el EB resuelven sus transiciones de pocos hertz con filtros
+        a \qty{1}{\kilo\hertz}, después de diezmar, y vuelven a $f_s$ por
+        interpolación; el PA y el EB se obtienen por complemento. Con eso las
+        20 combinaciones entran en tiempo real (peor caso estimado:
+        \qty{63}{\percent}), con \num{2576} coeficientes en lugar de
+        \num{51220}. El precio es una estructura más compleja, un retardo
+        mayor que el del FIR directo equiripple y componentes espurias por el
+        cambio de tasa, acotadas a \qty{-41.8}{\deci\bel}. La estructura se
+        apoya en la misma descomposición polifásica que la FFT de diezmado
+        en el tiempo; la diferencia es que el diezmado descarta fases y por
+        eso necesita el filtro antialias (sección~\ref{sec:fft}).
+  \item \textbf{Respuesta en hertz independiente de $f_s$}: el diezmador, el
+        PB y el LPB se diseñan para cada velocidad; los filtros angostos son
+        los mismos para las cinco.
+  \item \textbf{Diseño equiripple de orden mínimo verificado en q15}, por
+        script, con el reparto del error entre los bloques explícito y la
+        verificación del filtro compuesto, incluido el aliasing.
+  \item \textbf{Diezmador repartido} entre las $M$ muestras, para que la
+        muestra de diezmado no concentre el cálculo (en el peor caso, del
+        \qty{92}{\percent} al \qty{63}{\percent} del período).
+  \item \textbf{ADC en \qty{16}{\bit}}, cuyo resultado, centrado, es
+        directamente un \texttt{q15\_t}.
+  \item \textbf{Buffers de estado compartidos} por grupo de filtros, en lugar
+        de uno por filtro.
+  \item \textbf{Cambio de filtro diferido a la rutina del ADC}, con borrado
+        del estado, para que nunca se cambie de filtro en medio de un cálculo.
+  \item \textbf{Touchpad y LED en el lazo principal}, sin interrupciones
+        propias: el touchpad se lee por \emph{polling} sin esperas, con
+        antirrebote e histéresis, y el LED indica la $f_s$ con su color y el
+        filtro con su parpadeo. Así la rutina del ADC no comparte su
+        prioridad con tareas que no tienen requisitos de tiempo real.
+\end{itemize}
+
+La implementación previa mostró que el método de diseño no es la causa de
+fondo de la carga de CPU. Según las ecuaciones~\eqref{eq:kaiser}
+y~\eqref{eq:equiripple}, con cualquier método el orden de un FIR es
+proporcional a $f_s/\Delta f$. Las especificaciones del PA, del PBanda y del
+EB tienen transiciones de pocos hertz, y con $f_s$ de decenas de kilohertz
+eso exige miles de coeficientes por muestra. El diseño equiripple de orden
+mínimo redujo los coeficientes entre un \qty{13}{\percent} y un
+\qty{23}{\percent} respecto de Kaiser, pero hacía falta un factor de 10 o
+más. Ese factor lo dio el cambio de estructura: procesar las bandas
+angostas a \qty{1}{\kilo\hertz}. Quedan como mejoras posibles:
+\begin{itemize}[nosep]
+  \item \textbf{Aprovechar la simetría de los coeficientes} en el PB y el
+        LPB, que son los que dominan la carga a $f_s$ altas: sumar primero
+        las muestras que comparten coeficiente, $x[n-k] + x[n-N+1+k]$,
+        reduce las multiplicaciones a la mitad. CMSIS-DSP no ofrece esta
+        variante en q15, así que habría que implementarla.
+  \item \textbf{Procesar por bloques}, si la consigna lo permitiera: con
+        \texttt{blockSize} mayor que 1, \texttt{arm\_fir\_q15()} usa el lazo
+        SIMD de cuatro salidas y copia el estado una vez por bloque, y la
+        carga pasa a ser la promedio en lugar de la de la peor muestra.
+  \item \textbf{Compilar con optimización} (\texttt{-O2} o \texttt{-O3}) para
+        bajar los ciclos por producto.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\clearpage
+\appendix
+\section{Código fuente}\label{sec:codigo}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+El proyecto completo de MCUXpresso (incluidos los archivos generados por
+Config Tools, los drivers del SDK, CMSIS-DSP y
+\archivo{source/filtros_multitasa.h}) está en la carpeta \archivo{TP2/} del
+repositorio, y los scripts de MATLAB (\archivo{disenar_multitasa.m} y
+\archivo{generar_filtros.m}, de la implementación previa) en
+\archivo{documentacion/TP2/src/}. El repositorio es
+\url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}.
+
+\end{document}
