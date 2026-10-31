@@ -7,7 +7,6 @@
  * Configuracion actual de pines: SW2 selecciona BYPASS / FFT; SW3 cambia Fs.
  */
 #include <stdio.h>
-#include <fsl_debug_console.h>
 #include <string.h>
 #include <stdbool.h>
 #include "board.h"
@@ -15,9 +14,9 @@
 #include "pin_mux.h"
 #include "clock_config.h"
 #include "fsl_lpuart.h"
-#include "fsl_dac.h"
 #include "fsl_gpio.h"
 #include "fsl_port.h"
+#include "fsl_spc.h"
 #include "arm_math.h"
 #include "arm_const_structs.h"
 
@@ -61,34 +60,20 @@ static int fs_bloque; //fs correspondiente a las muestras guardadas
 static int modo_bloque; //FFT o bypass
 
 void init_fft(void) {
-#if BUFFER_SIZE == 512
-    pte_fft = &arm_cfft_sR_f32_len512;
-#elif BUFFER_SIZE == 1024
-    pte_fft = &arm_cfft_sR_f32_len1024;
-#elif BUFFER_SIZE == 2048
-    pte_fft = &arm_cfft_sR_f32_len2048;
-#else
-#error "BUFFER_SIZE debe ser 512, 1024 o 2048"
-#endif
+	#if BUFFER_SIZE == 512
+		pte_fft = &arm_cfft_sR_f32_len512;
+	#elif BUFFER_SIZE == 1024
+		pte_fft = &arm_cfft_sR_f32_len1024;
+	#elif BUFFER_SIZE == 2048
+		pte_fft = &arm_cfft_sR_f32_len2048;
+	#else
+	#error "BUFFER_SIZE debe ser 512, 1024 o 2048"
+	#endif
 //La estructura a la que se apunta contiene:
 // - Longitud de la FFT
 // - Factores TWIDDLE
 // - Tabla para ordenar los resultados
 }
-
-//static void init_dac(void) {
-//	dac_config_t dacConfig;
-//
-//	CLOCK_SetClkDiv(kCLOCK_DivDac0Clk, 1u);
-//	CLOCK_AttachClk(kFRO_HF_to_DAC0);
-//	SPC0->ACTIVE_CFG1 |= 0x11;          /* enciende DAC0 y VREF */
-//
-//	DAC_GetDefaultConfig(&dacConfig);
-//	dacConfig.referenceVoltageSource = kDAC_ReferenceVoltageSourceAlt1;
-//	DAC_Init(DAC0, &dacConfig);
-//	DAC_Enable(DAC0, true);
-//	DAC_SetData(DAC0, ADC_MID);         /* arranca en la mitad de escala */
-//}
 
 void setup_new_match(int m_val){
 	uint32_t match_val = m_val;
@@ -186,15 +171,9 @@ void ADC0_IRQHANDLER(void) {
             index_buffer++;
             if (index_buffer == BUFFER_SIZE) {
                 index_buffer = 0;
-                //__DMB();  /* Publicar las muestras antes de avisar a main. */
                 buffer_listo = true;
             }
         }
-
-//        int32_t out_dac = ((int32_t)muestra / 16) + ADC_MID;
-//        if (out_dac < 0) out_dac = 0;
-//        if (out_dac > 4095) out_dac = 4095;
-//        DAC_SetData(DAC0, (uint16_t)out_dac);
     }
 #if defined __CORTEX_M && (__CORTEX_M == 4U)
     __DSB();
@@ -240,7 +219,6 @@ void enviar_buffer(void) {
         memcpy(&imag, &buffer_out[2*i+1], sizeof(imag));
         snprintf(linea, sizeof(linea), "%u,%08lX,%08lX\r\n", (unsigned)i,
                  (unsigned long)real, (unsigned long)imag);
-        PRINTF("%d", buffer_out[2*i]);
         if (!enviar_texto_uart(linea)) return;
     }
     (void)enviar_texto_uart("END\r\n");
@@ -249,10 +227,12 @@ void enviar_buffer(void) {
 int main(void) {
     BOARD_InitBootPins();
     BOARD_InitBootClocks();
-    //init_dac();
+    SPC_EnableActiveModeAnalogModules(SPC0, kSPC_controlVref);
     BOARD_InitBootPeripherals();
     init_fft();
     set_state(state_counter);
+    /* Si este mensaje llega, la UART funciona y el init del ADC no se colgo. */
+    (void)enviar_texto_uart("TP3 boot\r\n");
 
     while (1) {
         if (buffer_listo) {

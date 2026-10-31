@@ -28,7 +28,6 @@ while isgraphics(fig)
             end
             re = double(typecast(uint32(hex2dec(tok{2})),'single'));
             im = double(typecast(uint32(hex2dec(tok{3})),'single'));
-            fprintf('re = %.9e\n', re);
             X(k+1) = complex(re,im);
         end
         if strtrim(readline(s)) ~= "END"

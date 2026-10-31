@@ -169,7 +169,6 @@ void BOARD_InitLEDsPins(void);
  */
 void BOARD_InitBUTTONsPins(void);
 
-#define PCR_IBE_ibe0 0x00u /*!<@brief Input Buffer Enable: Disables */
 #define PCR_IBE_ibe1 0x01u /*!<@brief Input Buffer Enable: Enables */
 
 /*!

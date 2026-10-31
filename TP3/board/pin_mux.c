@@ -727,7 +727,6 @@ BOARD_InitPERIPHERALsPins:
   - {pin_num: C9, peripheral: CTIMER0, signal: 'MATCH, 3', pin_signal: PIO0_19/WUU0_IN3/EWM0_OUT_b/FC0_P3/CT0_MAT3/FLEXIO0_D3/HSCMP1_OUT/TSI0_CH14/ADC0_A11}
   - {pin_num: P3, peripheral: ADC0, signal: 'A, 0', pin_signal: ADC0_A0}
   - {peripheral: ADC0, signal: 'TRG_CH, 0', pin_signal: CTIMER0_MATCH3}
-  - {pin_num: T1, peripheral: DAC0, signal: OUT, pin_signal: PIO4_2/TRIG_IN6/FC2_P2/CT_INP12/SMARTDMA_PIO26/PLU_IN2/SINC0_MBIT3/DAC0_OUT/ADC0_A4/ADC1_A4/CMP0_IN4N/CMP1_IN4N/CMP2_IN4N}
  * BE CAREFUL MODIFYING THIS COMMENT - IT IS YAML SETTINGS FOR TOOLS ***********
  */
 /* clang-format on */
@@ -744,8 +743,6 @@ void BOARD_InitPERIPHERALsPins(void)
     CLOCK_EnableClock(kCLOCK_InputMux0);
     /* Enables the clock for PORT0 controller: Enables clock */
     CLOCK_EnableClock(kCLOCK_Port0);
-    /* Enables the clock for PORT4: Enables clock */
-    CLOCK_EnableClock(kCLOCK_Port4);
     /* Timer CTIMER0 Match 3 is selected as trigger input for ADC0 channel 0 */
     INPUTMUX_AttachSignal(INPUTMUX0, 0U, kINPUTMUX_Ctimer0M3ToAdc0Trigger);
 
@@ -758,16 +755,6 @@ void BOARD_InitPERIPHERALsPins(void)
 
                       /* Input Buffer Enable: Enables. */
                       | PORT_PCR_IBE(PCR_IBE_ibe1));
-
-    /* PORT4_2 (pin T1) is configured as DAC0_OUT */
-    PORT_SetPinMux(PORT4, 2U, kPORT_MuxAlt0);
-
-    PORT4->PCR[2] = ((PORT4->PCR[2] &
-                      /* Mask bits to zero which are setting */
-                      (~(PORT_PCR_IBE_MASK)))
-
-                     /* Input Buffer Enable: Disables. */
-                     | PORT_PCR_IBE(PCR_IBE_ibe0));
 }
 /***********************************************************************************************************************
  * EOF

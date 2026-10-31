@@ -277,7 +277,6 @@ outputs:
 - {id: CLK_144M_clock.outFreq, value: 144 MHz}
 - {id: CLK_48M_clock.outFreq, value: 48 MHz}
 - {id: CTIMER0_clock.outFreq, value: 150 MHz}
-- {id: DAC0_clock.outFreq, value: 48 MHz}
 - {id: FLEXCOMM4_clock.outFreq, value: 12 MHz}
 - {id: FRO_12M_clock.outFreq, value: 12 MHz}
 - {id: FRO_HF_clock.outFreq, value: 48 MHz}
@@ -301,7 +300,6 @@ settings:
 - {id: SCG.SCSSEL.sel, value: SCG.PLL0_CLK}
 - {id: SYSCON.ADC0CLKSEL.sel, value: SCG.FRO_HF}
 - {id: SYSCON.CTIMERCLKSEL0.sel, value: SCG.PLL0_CLK}
-- {id: SYSCON.DAC0CLKSEL.sel, value: SCG.FRO_HF}
 - {id: SYSCON.FCCLKSEL4.sel, value: SCG.FRO_12M}
 - {id: SYSCON.FLEXSPICLKSEL.sel, value: NO_CLOCK}
 - {id: SYSCON.FREQMEREFCLKSEL.sel, value: SYSCON.evtg_out0a}
@@ -359,14 +357,12 @@ void BOARD_BootClockPLL150M(void)
     /*!< Set up clock selectors  */
     CLOCK_AttachClk(kPLL0_to_MAIN_CLK);
     CLOCK_AttachClk(kFRO_HF_to_ADC0);                 /*!< Switch ADC0 to FRO_HF */
-    CLOCK_AttachClk(kFRO_HF_to_DAC0);                 /*!< Switch DAC0 to FRO_HF */
     CLOCK_AttachClk(kPLL0_to_CTIMER0);                 /*!< Switch CTIMER0 to PLL0 */
     CLOCK_AttachClk(kFRO12M_to_FLEXCOMM4);                 /*!< Switch FLEXCOMM4 to FRO12M */
 
     /*!< Set up dividers */
     CLOCK_SetClkDiv(kCLOCK_DivAhbClk, 1U);           /*!< Set AHBCLKDIV divider to value 1 */
     CLOCK_SetClkDiv(kCLOCK_DivAdc0Clk, 1U);           /*!< Set ADC0CLKDIV divider to value 1 */
-    CLOCK_SetClkDiv(kCLOCK_DivDac0Clk, 1U);           /*!< Set DAC0CLKDIV divider to value 1 */
     CLOCK_SetClkDiv(kCLOCK_DivCtimer0Clk, 1U);           /*!< Set CTIMER0CLKDIV divider to value 1 */
     CLOCK_SetClkDiv(kCLOCK_DivFlexcom4Clk, 1U);           /*!< Set FLEXCOMM4CLKDIV divider to value 1 */
 

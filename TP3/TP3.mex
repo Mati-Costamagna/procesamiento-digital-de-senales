@@ -567,11 +567,6 @@
                         <data>true</data>
                      </feature>
                   </dependency>
-                  <dependency resourceType="Peripheral" resourceId="DAC0" description="Peripheral DAC0 signals are routed in the Pins Tool, but the peripheral is not initialized in the Peripherals Tool." problem_level="1" source="Pins:BOARD_InitPERIPHERALsPins">
-                     <feature name="initialized" evaluation="equal">
-                        <data>true</data>
-                     </feature>
-                  </dependency>
                   <dependency resourceType="SWComponent" resourceId="platform.drivers.common" description="Pins initialization requires the COMMON Driver in the project." problem_level="2" source="Pins:BOARD_InitPERIPHERALsPins">
                      <feature name="enabled" evaluation="equal" configuration="cm33_core0">
                         <data>true</data>
@@ -592,7 +587,6 @@
                   <pin peripheral="CTIMER0" signal="MATCH, 3" pin_num="C9" pin_signal="PIO0_19/WUU0_IN3/EWM0_OUT_b/FC0_P3/CT0_MAT3/FLEXIO0_D3/HSCMP1_OUT/TSI0_CH14/ADC0_A11"/>
                   <pin peripheral="ADC0" signal="A, 0" pin_num="P3" pin_signal="ADC0_A0"/>
                   <pin peripheral="ADC0" signal="TRG_CH, 0" pin_num="" pin_signal="CTIMER0_MATCH3"/>
-                  <pin peripheral="DAC0" signal="OUT" pin_num="T1" pin_signal="PIO4_2/TRIG_IN6/FC2_P2/CT_INP12/SMARTDMA_PIO26/PLU_IN2/SINC0_MBIT3/DAC0_OUT/ADC0_A4/ADC1_A4/CMP0_IN4N/CMP1_IN4N/CMP2_IN4N"/>
                </pins>
             </function>
          </functions_list>
@@ -816,7 +810,6 @@
                   <clock_output id="CLK_144M_clock.outFreq" value="144 MHz" locked="false" accuracy=""/>
                   <clock_output id="CLK_48M_clock.outFreq" value="48 MHz" locked="false" accuracy=""/>
                   <clock_output id="CTIMER0_clock.outFreq" value="150 MHz" locked="false" accuracy=""/>
-                  <clock_output id="DAC0_clock.outFreq" value="48 MHz" locked="false" accuracy=""/>
                   <clock_output id="FLEXCOMM4_clock.outFreq" value="12 MHz" locked="false" accuracy=""/>
                   <clock_output id="FRO_12M_clock.outFreq" value="12 MHz" locked="false" accuracy=""/>
                   <clock_output id="FRO_HF_clock.outFreq" value="48 MHz" locked="false" accuracy=""/>
@@ -841,7 +834,6 @@
                   <setting id="SCG.SCSSEL.sel" value="SCG.PLL0_CLK" locked="false"/>
                   <setting id="SYSCON.ADC0CLKSEL.sel" value="SCG.FRO_HF" locked="false"/>
                   <setting id="SYSCON.CTIMERCLKSEL0.sel" value="SCG.PLL0_CLK" locked="false"/>
-                  <setting id="SYSCON.DAC0CLKSEL.sel" value="SCG.FRO_HF" locked="false"/>
                   <setting id="SYSCON.FCCLKSEL4.sel" value="SCG.FRO_12M" locked="false"/>
                   <setting id="SYSCON.FLEXSPICLKSEL.sel" value="NO_CLOCK" locked="false"/>
                   <setting id="SYSCON.FREQMEREFCLKSEL.sel" value="SYSCON.evtg_out0a" locked="false"/>
@@ -950,16 +942,6 @@
                   <data type="Version" maxValue="2.6.9">2.5.0</data>
                </feature>
             </dependency>
-            <dependency resourceType="SWComponent" resourceId="platform.drivers.dac_1" description="DAC Driver is not found in the toolchain/IDE project. The project will not compile!" problem_level="2" source="Peripherals">
-               <feature name="enabled" evaluation="equal">
-                  <data type="Boolean">true</data>
-               </feature>
-            </dependency>
-            <dependency resourceType="SWComponent" resourceId="platform.drivers.dac_1" description="An unsupported version of the DAC Driver in the toolchain/IDE project. Required: ${required_value}, actual: ${actual_value}. The project might not compile correctly." problem_level="1" source="Peripherals">
-               <feature name="version" evaluation="equivalent">
-                  <data type="Version">2.1.0</data>
-               </feature>
-            </dependency>
             <dependency resourceType="SWComponent" resourceId="platform.drivers.gpio" description="GPIO Driver is not found in the toolchain/IDE project. The project will not compile!" problem_level="2" source="Peripherals">
                <feature name="enabled" evaluation="equal">
                   <data type="Boolean">true</data>
@@ -1020,11 +1002,6 @@
                   </dependency>
                   <dependency resourceType="PeripheralUnifiedSignal" resourceId="ADC0.adc_se.0A" description="Signal channel 0A is not routed." problem_level="1" source="Peripherals:BOARD_InitPeripherals">
                      <feature name="routed" evaluation="">
-                        <data type="Boolean">true</data>
-                     </feature>
-                  </dependency>
-                  <dependency resourceType="SWComponent" resourceId="platform.drivers.mcx_spc" description="The fsl_spc driver is missing in the project ." problem_level="2" source="Peripherals:BOARD_InitPeripherals">
-                     <feature name="enabled" evaluation="equal">
                         <data type="Boolean">true</data>
                      </feature>
                   </dependency>
@@ -1144,40 +1121,6 @@
                            <setting name="enable_irq" value="true"/>
                            <struct name="adc_interrupt">
                               <setting name="IRQn" value="ADC0_IRQn"/>
-                              <setting name="enable_interrrupt" value="enabled"/>
-                              <setting name="enable_priority" value="false"/>
-                              <setting name="priority" value="0"/>
-                              <setting name="enable_custom_name" value="false"/>
-                           </struct>
-                        </struct>
-                     </config_set>
-                  </instance>
-                  <instance name="DAC0" uuid="284870d6-b8a4-4f24-9667-182fd91dcb54" type="dac_1" type_id="dac_1_2.1.0" mode="general" peripheral="DAC0" enabled="true" comment="" custom_name_enabled="false" editing_lock="false">
-                     <config_set name="fsl_dac">
-                        <struct name="dac_config">
-                           <setting name="fifoWatermarkLevel" value="0"/>
-                           <setting name="fifoTriggerMode" value="kDAC_FIFOTriggerByHardwareMode"/>
-                           <setting name="fifoWorkMode" value="kDAC_FIFODisabled"/>
-                           <setting name="referenceVoltageSource" value="kDAC_ReferenceVoltageSourceAlt1"/>
-                           <setting name="referenceCurrentSource" value="kDAC_ReferenceCurrentSourcePtat"/>
-                           <setting name="enableOpampBuffer" value="true"/>
-                           <setting name="periodicTriggerNumber" value="0"/>
-                           <setting name="periodicTriggerWidth" value="0"/>
-                           <setting name="syncTime" value="1"/>
-                           <setting name="enableLowerLowPowerMode" value="false"/>
-                        </struct>
-                        <setting name="enable_dma" value="false"/>
-                        <setting name="dac_dma" value="kDAC_FIFOEmptyDMAEnable"/>
-                        <setting name="enable_DAC" value="true"/>
-                        <setting name="enable_convert" value="false"/>
-                        <setting name="convert_value" value="0"/>
-                        <struct name="interrupt_config">
-                           <set name="dac_interrupts">
-                              <selected/>
-                           </set>
-                           <setting name="enable_irq" value="false"/>
-                           <struct name="interrupt">
-                              <setting name="IRQn" value="DAC0_IRQn"/>
                               <setting name="enable_interrrupt" value="enabled"/>
                               <setting name="enable_priority" value="false"/>
                               <setting name="priority" value="0"/>
