@@ -45,7 +45,7 @@ static void compute_w_opt(void)
     }
     else
     {
-        /* W = C^-1 con C(z) ≈ c0 / (1 - a z^-1): W(z) ≈ (1 - a z^-1) / c0 */
+        /* W = C^-1 con C(z) ~ c0 / (1 - a z^-1): W(z) ~ (1 - a z^-1) / c0 */
         const float c0 = g_correlador[0];
         const float a  = g_correlador[1] / g_correlador[0];
         s_w_opt[0]     = 1.0f / c0;
