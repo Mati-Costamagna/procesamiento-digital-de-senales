@@ -4,7 +4,6 @@
  */
 #include "parte1.h"
 
-#include <math.h>
 
 #include "coefs.h"
 #include "fir_fijo.h"
@@ -77,16 +76,6 @@ static float coef_error(float *diff, const float *w)
         acc += diff[k] * diff[k];
     }
     return acc;
-}
-
-/* 10 log10(x) sin math.h de punto flotante doble (alcanza con ~0,01 dB) */
-static float db10(float x)
-{
-    if (!(x > 0.0f))
-    {
-        return -999.0f;
-    }
-    return 10.0f * 0.30102999566f * log2f(x);
 }
 
 p1_status_t p1_run(const p1_cfg_t *cfg, const p1_io_t *io)
@@ -169,7 +158,7 @@ p1_status_t p1_run(const p1_cfg_t *cfg, const p1_io_t *io)
         txt_u32(&ln, n);
         txt_f32(&ln, mse);
         txt_f32(&ln, werr2);
-        txt_f32(&ln, db10(mse));
+        txt_f32(&ln, txt_db10(mse));
         txt_end(&ln, io->write);
 
         if (cfg->send_diff)

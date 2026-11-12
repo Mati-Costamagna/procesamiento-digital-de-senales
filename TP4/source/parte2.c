@@ -4,7 +4,6 @@
  */
 #include "parte2.h"
 
-#include <math.h>
 #include <string.h>
 
 #include "coefs.h"
@@ -175,15 +174,6 @@ const char *p2_out_name(p2_out_t o)
     return (o < P2_OUT_CNT) ? names[o] : "?";
 }
 
-static float db10(float x)
-{
-    if (!(x > 0.0f))
-    {
-        return -999.0f;
-    }
-    return 10.0f * 0.30102999566f * log2f(x);
-}
-
 void p2_print_header(txt_write_fn wr, float fs)
 {
     txt_line_t ln;
@@ -216,10 +206,10 @@ void p2_print_stats(txt_write_fn wr, const p2_stats_t *st)
     txt_u32(&ln, st->n);
     txt_f32(&ln, st->p_noise);
     txt_f32(&ln, st->p_res);
-    txt_f32(&ln, db10(st->p_noise) - db10(st->p_res));
+    txt_f32(&ln, txt_db10(st->p_noise) - txt_db10(st->p_res));
     txt_f32(&ln, st->werr2);
-    txt_f32(&ln, db10(st->p_sig) - db10(st->p_noise));
-    txt_f32(&ln, db10(st->p_sig) - db10(st->p_res));
+    txt_f32(&ln, txt_db10(st->p_sig) - txt_db10(st->p_noise));
+    txt_f32(&ln, txt_db10(st->p_sig) - txt_db10(st->p_res));
     txt_end(&ln, wr);
 }
 
