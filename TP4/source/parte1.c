@@ -19,7 +19,7 @@ void p1_default_cfg(p1_cfg_t *cfg)
     cfg->input     = P1_IN_RANDOM;
     cfg->amp       = 1.0f;
     cfg->sigma_v   = 0.0f;
-    cfg->n_total   = 20000U;
+    cfg->n_total   = 5000U;
     cfg->block     = 100U;
     cfg->seed      = 1U;
     cfg->send_diff = true;

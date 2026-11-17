@@ -6,7 +6,7 @@ function datos = tp4_parse_log(entrada)
 %
 %   datos.p1(i)  una corrida de la Parte 1 (identificación de planta):
 %       .cfg     parámetros (alg, mu, in, A, Px, L, N, blk, sv, seed, mu_max, tau)
-%       .planta  coeficientes de la planta (1x30)
+%       .planta  coeficientes de la planta (1xL)
 %       .n       índice de muestra al final de cada bloque de 100
 %       .mse     MSE promedio de cada bloque
 %       .mse_dB  10 log10(mse)
@@ -138,7 +138,7 @@ end
 function s = nueva_p1()
     s = struct('cfg', struct(), 'planta', [], 'n', zeros(0,1), 'mse', zeros(0,1), ...
         'werr2', zeros(0,1), 'mse_dB', zeros(0,1), 'n_diff', zeros(0,1), ...
-        'diff', zeros(0,30), 'w', [], 'fin', struct('n', NaN, 'mse', NaN, ...
+        'diff', zeros(0,0), 'w', [], 'fin', struct('n', NaN, 'mse', NaN, ...
         'werr2', NaN, 'cyc', NaN, 'estado', 'CORTADO'));
 end
 

@@ -27,8 +27,8 @@ static p2_stats_t s_last;
 void p2_default_cfg(p2_cfg_t *cfg)
 {
     cfg->alg       = LMS_ALG_CMSIS;
-    cfg->mu        = 0.005f;
-    cfg->noise_amp = 0.4f;
+    cfg->mu        = 0.01f;
+    cfg->noise_amp = 0.2f;
     cfg->topo      = P2_CORR_EN_RUIDO;
     cfg->seed      = 1U;
     cfg->block     = 100U;
@@ -90,8 +90,8 @@ void p2_set_mu(float mu)
 
 bool p2_process(float s, float out[P2_OUT_CNT])
 {
-    /* 1) ruido aleatorio y su versión correlacionada */
-    const float r  = s_cfg.noise_amp * prng_uniform(&s_rng);
+    /* 1) ruido blanco gaussiano (AWGN, desvío noise_amp) y su versión correlacionada */
+    const float r  = s_cfg.noise_amp * prng_gauss(&s_rng);
     const float rc = fir_fijo_step(&s_corr, r);
 
     float noise; /* ruido que contamina la señal */
@@ -177,8 +177,8 @@ const char *p2_out_name(p2_out_t o)
 void p2_print_header(txt_write_fn wr, float fs)
 {
     txt_line_t ln;
-    /* Potencia de la referencia: uniforme -> a^2/3; si pasa por C, sum(c^2) = 1 */
-    const float px = s_cfg.noise_amp * s_cfg.noise_amp / 3.0f;
+    /* Potencia de la referencia: AWGN -> sigma^2; si pasa por C, sum(c^2) ~ 1 */
+    const float px = s_cfg.noise_amp * s_cfg.noise_amp;
     float mu_max   = 2.0f / ((float)COEFS_L * px);
     float tau      = 1.0f / (2.0f * s_cfg.mu * px);
     if (s_cfg.alg == LMS_ALG_NLMS)

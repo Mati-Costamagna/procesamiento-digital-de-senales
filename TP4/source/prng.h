@@ -38,4 +38,21 @@ static inline float prng_uniform(prng_t *p)
     return (float)(int32_t)((prng_u32(p) >> 8) - 0x800000U) * (1.0f / 8388608.0f);
 }
 
+/*
+ * Gaussiana N(0, 1) aproximada (AWGN): suma de 12 uniformes, por el teorema
+ * central del límite. Cada uniforme en [-1, 1) tiene varianza 1/3, la suma de
+ * 12 tiene varianza 4 y se escala por 1/2. No usa logf/sqrtf/cosf (Box-Muller),
+ * que la biblioteca C de MCUXpresso no siempre trae, y cuesta 12 xorshift.
+ * Las colas quedan acotadas a +-6 sigma, lo que no afecta al experimento.
+ */
+static inline float prng_gauss(prng_t *p)
+{
+    float acc = 0.0f;
+    for (uint32_t i = 0U; i < 12U; i++)
+    {
+        acc += prng_uniform(p);
+    }
+    return 0.5f * acc;
+}
+
 #endif /* PRNG_H_ */

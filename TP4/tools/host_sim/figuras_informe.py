@@ -30,7 +30,8 @@ plt.rcParams.update({"figure.figsize": (7.0, 3.8), "axes.grid": True, "grid.alph
                      "savefig.bbox": "tight", "figure.constrained_layout.use": True,
                      "axes.formatter.use_locale": False})
 
-MU_LIST = [0.002, 0.01, 0.05, 0.1, 0.19, 0.21]
+MU_LIST = [0.002, 0.01, 0.05, 0.2, 0.6, 0.8]
+L = 8
 ALG = {"clase": 0, "cmsis": 1, "nlms": 2}
 
 
@@ -98,7 +99,7 @@ def parse(txt):
     return p1, p2
 
 
-def p1(alg="cmsis", mu=0.01, entrada=0, A=1.0, sv=0.0, N=20000, seed=1, diff=1, nombre=None):
+def p1(alg="cmsis", mu=0.01, entrada=0, A=1.0, sv=0.0, N=5000, seed=1, diff=1, nombre=None):
     return parse(correr("p1_sim", ALG[alg], mu, entrada, A, sv, N, seed, diff, nombre=nombre))[0][0]
 
 
@@ -143,12 +144,12 @@ resumen = []
 
 # E1: entrada aleatoria, barrido de mu
 e1 = [p1(mu=m, nombre=f"p1_e1_mu{m:g}.txt") for m in MU_LIST]
-curvas(e1, "mse", r"Curva de aprendizaje, entrada aleatoria $A$ = 1 ($P_x$ = 1/3, $\mu_{max}$ = 0,2)",
+curvas(e1, "mse", r"Curva de aprendizaje, entrada aleatoria $A$ = 1 ($P_x$ = 1/3, $\mu_{max}$ = 0,75)",
        "p1_e1_mse", "MSE promedio de 100 muestras (dB)")
 curvas(e1, "werr2", "Error de los coeficientes, entrada aleatoria", "p1_e1_werr",
        r"$\|\mathbf{p}-\mathbf{w}\|^2$ (dB)")
-curvas(e1[:3], "mse", r"Detalle de las primeras 3000 muestras", "p1_e1_mse_zoom",
-       "MSE (dB)", xmax=3000, ylim=(-80, 5))
+curvas(e1[:5], "mse", r"Detalle de las primeras 1000 muestras", "p1_e1_mse_zoom",
+       "MSE (dB)", xmax=1000, ylim=(-80, 5))
 for r in e1:
     resumen.append(("RANDOM", r))
 
@@ -157,35 +158,35 @@ r = e1[1]
 fig, (a1, a2) = plt.subplots(2, 1, figsize=(7, 5.2), sharex=True)
 nd = np.r_[0, r["nd"]]
 dif = np.vstack([r["planta"], r["diff"]])
-for k in range(6):
+for k in range(L):
     a1.plot(nd, dif[:, k], lw=1.1, label=f"k = {k}")
 a1.set_ylabel(r"$p_k - w_k$")
 a1.set_title(r"Diferencia planta $-$ filtro cada 100 muestras ($\mu$ = 0,01, entrada aleatoria)")
-a1.legend(ncol=3, loc="upper right")
-im = a2.imshow(np.abs(dif.T), aspect="auto", origin="lower", extent=[0, nd[-1], -0.5, 29.5],
+a1.legend(ncol=4, loc="upper right")
+im = a2.imshow(np.abs(dif.T), aspect="auto", origin="lower", extent=[0, nd[-1], -0.5, L - 0.5],
                cmap="viridis")
 a2.set_ylabel("coeficiente k")
 a2.set_xlabel("muestra n")
-a2.set_xlim(0, 3000)
-a1.set_xlim(0, 3000)
+a2.set_xlim(0, 1500)
+a1.set_xlim(0, 1500)
 fig.colorbar(im, ax=a2, label=r"$|p_k - w_k|$")
 guardar(fig, "p1_e1_diff")
 
 # Coeficientes finales vs planta
 fig, ax = plt.subplots()
-k = np.arange(30)
+k = np.arange(L)
 ax.stem(k, r["planta"], linefmt="k-", markerfmt="ko", basefmt="k-", label="planta $p_k$")
 ax.plot(k, e1[0]["w"], "s", mfc="none", label=r"$w_k$, $\mu$ = 0,002")
 ax.plot(k, e1[1]["w"], "x", label=r"$w_k$, $\mu$ = 0,01")
 ax.set_xlabel("k")
 ax.set_ylabel("coeficiente")
-ax.set_title("Coeficientes al final de 20000 muestras (entrada aleatoria)")
+ax.set_title("Coeficientes al final de 5000 muestras (entrada aleatoria)")
 ax.legend()
 guardar(fig, "p1_e1_coef")
 
 # E2: entrada constante
-e2 = [p1(mu=m, entrada=1, nombre=f"p1_e2_mu{m:g}.txt") for m in [0.002, 0.01, 0.05, 0.06, 0.07]]
-curvas(e2, "mse", r"Curva de aprendizaje, entrada constante $A$ = 1 ($\mu_{max}$ = 0,0667)",
+e2 = [p1(mu=m, entrada=1, nombre=f"p1_e2_mu{m:g}.txt") for m in [0.002, 0.01, 0.05, 0.24, 0.26]]
+curvas(e2, "mse", r"Curva de aprendizaje, entrada constante $A$ = 1 ($\mu_{max}$ = 0,25)",
        "p1_e2_mse", "MSE (dB)")
 curvas(e2, "werr2", "Error de los coeficientes, entrada constante", "p1_e2_werr",
        r"$\|\mathbf{p}-\mathbf{w}\|^2$ (dB)", ylim=(-10, 40))
@@ -203,19 +204,19 @@ for r in e2:
     resumen.append(("CONST", r))
 
 # E3: potencia de entrada, LMS vs NLMS
-e3 = [p1(mu=0.01, A=A, diff=0, nombre=f"p1_e3_lms_A{A:g}.txt") for A in [0.5, 1, 2, 5]]
-e3n = [p1(alg="nlms", mu=0.3, A=A, diff=0, nombre=f"p1_e3_nlms_A{A:g}.txt") for A in [0.5, 1, 2, 5]]
+e3 = [p1(mu=0.05, A=A, diff=0, nombre=f"p1_e3_lms_A{A:g}.txt") for A in [0.5, 1, 2, 5]]
+e3n = [p1(alg="nlms", mu=0.1, A=A, diff=0, nombre=f"p1_e3_nlms_A{A:g}.txt") for A in [0.5, 1, 2, 5]]
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 3.6), sharey=True)
 for r in e3:
     lab = f"A = {g(r['cfg']['A'])}" + (" (diverge)" if r["fin"]["estado"] == "DIVERGE" else "")
     a1.plot(r["n"], db(r["mse"]), lw=1.2, label=lab)
 for r in e3n:
     a2.plot(r["n"], db(r["mse"]), lw=1.2, label=f"A = {g(r['cfg']['A'])}")
-a1.set_title(r"LMS, $\mu$ = 0,01")
-a2.set_title(r"NLMS, $\mu$ = 0,3")
+a1.set_title(r"LMS, $\mu$ = 0,05")
+a2.set_title(r"NLMS, $\mu$ = 0,1")
 for a in (a1, a2):
     a.set_xlabel("muestra n")
-    a.set_xlim(0, 6000)
+    a.set_xlim(0, 3000)
     a.set_ylim(-150, 40)
     a.legend(loc="upper right")
 a1.set_ylabel("MSE (dB)")
@@ -224,14 +225,14 @@ for r in e3 + e3n:
     resumen.append(("POT", r))
 
 # E4: implementaciones
-e4 = [p1(alg=a, mu=(0.3 if a == "nlms" else 0.01), diff=0) for a in ("clase", "cmsis", "nlms")]
+e4 = [p1(alg=a, mu=(0.1 if a == "nlms" else 0.05), diff=0) for a in ("clase", "cmsis", "nlms")]
 fig, ax = plt.subplots()
 for r, ls in zip(e4, ["-", "--", "-"]):
     ax.plot(r["n"], db(r["mse"]), ls, lw=1.3,
             label=f"{r['cfg']['alg']}, " + rf"$\mu$ = {g(r['cfg']['mu'])}")
 ax.set_xlabel("muestra n")
 ax.set_ylabel("MSE (dB)")
-ax.set_xlim(0, 6000)
+ax.set_xlim(0, 2000)
 ax.set_ylim(-150, 10)
 ax.set_title("Las tres implementaciones (misma entrada)")
 ax.legend()
@@ -241,30 +242,35 @@ print("   LMS de clase == arm_lms_f32:", iguales)
 
 # E5: ruido de medición -> desajuste
 SV = 0.01
-e5 = [p1(mu=m, sv=SV, diff=0, nombre=f"p1_e5_mu{m:g}.txt") for m in [0.002, 0.01, 0.05, 0.1]]
+e5 = [p1(mu=m, sv=SV, diff=0, nombre=f"p1_e5_mu{m:g}.txt") for m in [0.005, 0.01, 0.05, 0.2]]
 curvas(e5, "mse", r"Con ruido de medición $\sigma_v$ = 0,01 ($\sigma_v^2$ = $-40$ dB)", "p1_e5_mse",
        "MSE (dB)", ylim=(-50, 5))
 tabla5 = []
 for r in e5:
     mu = r["cfg"]["mu"]
-    trR = 30 * r["cfg"]["Px"]
+    trR = L * r["cfg"]["Px"]
     M = (mu / 2 * trR) / (1 - mu / 2 * trR)
-    mse_est = r["mse"][-50:].mean()
+    mse_est = r["mse"][-20:].mean()
     tabla5.append((mu, M, SV**2 * (1 + M), mse_est, mse_est / SV**2 - 1))
 
 # --------------------------------------------------------------------------
 print("Parte 2")
 
 
-def p2(mu=0.005, topo=0, ruido=0.4, alg="cmsis", segs=6.0, ondas=None, dec=1, nombre=None):
+def p2(mu=0.01, topo=0, ruido=0.2, alg="cmsis", segs=6.0, ondas=None, dec=1, nombre=None):
     args = [ALG[alg], mu, ruido, topo, 8000, 200, 0.5, segs]
     if ondas:
         args += [ondas, dec]
     return parse(correr("p2_sim", *args, nombre=nombre))[1][0]
 
 
-e6 = [p2(mu=m, nombre=f"p2_e6_mu{m:g}.txt") for m in [0.001, 0.005, 0.02, 0.1]]
+e6 = [p2(mu=m, segs=8.6, nombre=f"p2_e6_mu{m:g}.txt") for m in [0.002, 0.01, 0.05, 0.2]]
 fig, ax = plt.subplots()
+def red_fin(r, nb=200):
+    """Reducción en régimen: cociente de potencias de los últimos nb bloques (2,5 s)."""
+    return 10 * np.log10(r["p_ruido"][-nb:].mean() / r["p_res"][-nb:].mean())
+
+
 def suave(r, nb=10):
     v = np.ones(nb) / nb
     return 10 * np.log10(np.convolve(r["p_ruido"], v, "same") / np.convolve(r["p_res"], v, "same"))
@@ -289,24 +295,24 @@ guardar(fig, "p2_e6_werr")
 r = e6[1]
 fig, ax = plt.subplots()
 ax.stem(k, r["w_opt"], linefmt="k-", markerfmt="ko", basefmt="k-", label=r"óptimo $c_k$")
-ax.plot(k, r["w"], "rx", label=r"$w_k$ al final ($\mu$ = 0,005)")
+ax.plot(k, r["w"], "rx", label=r"$w_k$ al final ($\mu$ = 0,01)")
 ax.set_xlabel("k")
 ax.set_ylabel("coeficiente")
 ax.set_title("Coeficientes del cancelador vs. los del correlador")
 ax.legend()
 guardar(fig, "p2_e6_coef")
 
-e7 = [p2(mu=m, topo=1, nombre=f"p2_e7_mu{m:g}.txt") for m in [0.005, 0.02]]
+e7 = [p2(mu=m, topo=1, segs=8.6, nombre=f"p2_e7_mu{m:g}.txt") for m in [0.01, 0.05]]
 fig, (a1, a2) = plt.subplots(1, 2, figsize=(9, 3.6))
 for r in e7:
     a1.plot(r["t"], suave(r), lw=1.2, label=rf"$\mu$ = {g(r['cfg']['mu'])}")
-a1.plot(e6[1]["t"], suave(e6[1]), "k", lw=0.8, alpha=0.6, label=r"correlador en el ruido, $\mu$ = 0,005")
+a1.plot(e6[1]["t"], suave(e6[1]), "k", lw=0.8, alpha=0.6, label=r"correlador en el ruido, $\mu$ = 0,01")
 a1.set_xlabel("tiempo (s)")
 a1.set_ylabel("reducción (dB)")
 a1.set_title("Correlador en la referencia")
 a1.legend(loc="lower right", fontsize=7.5)
 a2.stem(k, e7[1]["w_opt"], linefmt="k-", markerfmt="ko", basefmt="k-", label=r"$\approx C^{-1}$")
-a2.plot(k, e7[1]["w"], "rx", label=r"$w_k$ ($\mu$ = 0,02)")
+a2.plot(k, e7[1]["w"], "rx", label=r"$w_k$ ($\mu$ = 0,05)")
 a2.set_xlabel("k")
 a2.set_title("Coeficientes")
 a2.legend()
@@ -314,7 +320,7 @@ guardar(fig, "p2_e7_ref")
 
 # Formas de onda ("osciloscopio simulado")
 f_ondas = os.path.join(REG, "p2_ondas.csv")
-p2(mu=0.005, segs=4.0, ondas=f_ondas)
+p2(mu=0.01, segs=4.0, ondas=f_ondas)
 with open(f_ondas) as f:
     W = np.array([[float(x) for x in row] for row in list(csv.reader(f))[1:]])
 fs = 8000.0
@@ -370,6 +376,6 @@ with open(os.path.join(OUT, "..", "src", "tablas_sim.tex"), "w") as f_real:
     for r in e6 + e7:
         c = r["cfg"]
         f.write(f"{'ruido' if c['topo'] == 'RUIDO' else 'referencia'} & {c['mu']:g} & "
-                f"{c['tau'] / c['fs']:.3f} & {r['red_dB'][-20:].mean():.1f} & {r['snr_out'][-20:].mean():.1f} \\\\\n")
+                f"{c['tau'] / c['fs']:.3f} & {red_fin(r):.1f} & {red_fin(r) + r['snr_in'][-200:].mean():.1f} \\\\\n")
     f.write("\\bottomrule\n\\end{tabular}}\n")
 print("Listo:", OUT)

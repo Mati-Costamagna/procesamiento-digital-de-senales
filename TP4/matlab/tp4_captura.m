@@ -17,7 +17,7 @@ function datos = tp4_captura(puerto, comandos, fin, archivo, opciones)
 %   Ejemplos:
 %     d = tp4_captura('COM3', {'1','G1','E0','A1','U0.01','S'}, 'P1F', 'p1_mu0.01.txt');
 %     d = tp4_captura('COM3', {'1','G1','E0','A1','B'}, 'P1B,FIN', 'p1_barrido.txt');
-%     d = tp4_captura('COM3', {'2','U0.005','Z'}, 10, 'p2_mu0.005.txt');
+%     d = tp4_captura('COM3', {'2','U0.01','Z'}, 10, 'p2_mu0.01.txt');
 %
 %   Requiere MATLAB R2019b o posterior (serialport).
 

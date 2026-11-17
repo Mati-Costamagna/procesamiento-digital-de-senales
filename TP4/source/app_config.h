@@ -22,10 +22,10 @@
 /* ---------------------------------------------------------------------------
  * Parte 1: identificación de planta (no usa ADC ni DAC)
  * ------------------------------------------------------------------------- */
-#define APP_P1_N_DEFAULT    20000U      /* muestras por experimento (200 bloques) */
+#define APP_P1_N_DEFAULT    5000U       /* muestras por experimento (50 bloques) */
 #define APP_P1_BLOCK        100U        /* MSE promediado cada 100 muestras (consigna) */
 /* Valores de mu que se recorren con SW3 y con el comando B (barrido) */
-#define APP_P1_MU_LIST      {0.002f, 0.01f, 0.05f, 0.1f, 0.19f, 0.21f}
+#define APP_P1_MU_LIST      {0.002f, 0.01f, 0.05f, 0.2f, 0.6f, 0.8f}
 
 /* ---------------------------------------------------------------------------
  * Parte 2: cancelador de ruido. ADC0 canal A2 = P4_23 (J8 pin 28).

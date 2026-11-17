@@ -23,7 +23,7 @@ function figs = tp4_graficos_p1(datos, titulo, carpeta, prefijo)
     if isempty(R)
         error('No hay corridas de la Parte 1 en los datos');
     end
-    leyendas = arrayfun(@(r) etiqueta(r), R, 'UniformOutput', false);
+    leyendas = arrayfun(@(r) etiqueta(r, R), R, 'UniformOutput', false);
     figs = {};
 
     % 1) Curva de aprendizaje
@@ -74,15 +74,19 @@ function figs = tp4_graficos_p1(datos, titulo, carpeta, prefijo)
     end
 
     % 4) Diferencia de cada coeficiente a lo largo del tiempo
-    j = find(ok, 1);
+    % (la segunda corrida que convergió, si hay: en el barrido es mu = 0,01)
+    idx = find(ok);
+    j = [];
+    if ~isempty(idx), j = idx(min(2, numel(idx))); end
     if ~isempty(j) && ~isempty(R(j).diff)
         f = figure('Name', 'P1 - diferencia de coeficientes', 'Color', 'w');
         subplot(2, 1, 1);
-        plot(R(j).n_diff, R(j).diff(:, 1:5), 'LineWidth', 1.1);
+        nk = min(8, size(R(j).diff, 2));
+        plot(R(j).n_diff, R(j).diff(:, 1:nk), 'LineWidth', 1.1);
         grid on;
         xlabel('muestra n'); ylabel('p_k - w_k');
-        legend(arrayfun(@(k) sprintf('k = %d', k), 0:4, 'UniformOutput', false), ...
-            'Location', 'northeast');
+        legend(arrayfun(@(k) sprintf('k = %d', k), 0:nk-1, 'UniformOutput', false), ...
+            'Location', 'eastoutside');
         title(['Diferencia planta - filtro, ' leyendas{j}], 'Interpreter', 'tex');
         subplot(2, 1, 2);
         imagesc(R(j).n_diff, 0:size(R(j).diff, 2)-1, abs(R(j).diff'));
@@ -103,8 +107,17 @@ function figs = tp4_graficos_p1(datos, titulo, carpeta, prefijo)
     end
 end
 
-function s = etiqueta(r)
-    s = sprintf('\\mu = %g', r.cfg.mu);
+function s = etiqueta(r, R)
+    % Etiqueta con lo que cambia entre corridas: algoritmo, amplitud y/o mu
+    cf  = [R.cfg];
+    s   = '';
+    if numel(unique({cf.alg})) > 1
+        s = [strrep(r.cfg.alg, '_', '\_') ' '];
+    end
+    if numel(unique([cf.A])) > 1
+        s = [s sprintf('A = %g, ', r.cfg.A)];
+    end
+    s = [s sprintf('\\mu = %g', r.cfg.mu)];
     if strcmp(r.fin.estado, 'DIVERGE')
         s = [s ' (diverge)'];
     end
