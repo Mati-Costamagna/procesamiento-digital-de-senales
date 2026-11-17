@@ -4,11 +4,11 @@
  *
  *              +-------------------+  d(n)
  *   x(n) --+-->| PLANTA P(z), FIR  |---(+)---> (+)--> e(n)
- *          |   | 30 coef. fijos    |    ^ v(n)  ^ -
+ *          |   |  8 coef. fijos    |    ^ v(n)  ^ -
  *          |   +-------------------+    |       |
  *          |   +-------------------+    |       | y(n)
  *          +-->| FIR ADAPTATIVO    |----+-------+
- *              | 30 coef. w(n)     |<-- LMS (e, x)
+ *              |  8 coef. w(n)     |<-- LMS (e, x)
  *              +-------------------+
  *
  *  x(n): entrada pseudoaleatoria uniforme en [-A, A] (Px = A^2/3) o constante A (Px = A^2)
@@ -52,7 +52,7 @@ typedef struct
     uint32_t n_total; /* muestras a simular */
     uint32_t block;   /* muestras por promedio de MSE (100 según la consigna) */
     uint32_t seed;
-    bool send_diff;   /* manda la diferencia de los 30 coeficientes cada bloque */
+    bool send_diff;   /* manda la diferencia de los 8 coeficientes cada bloque */
 } p1_cfg_t;
 
 typedef struct

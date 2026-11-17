@@ -3,7 +3,7 @@
  * fir_fijo.h: FIR de coeficientes fijos, muestra a muestra.
  *
  * Se usa para la PLANTA a identificar (parte 1) y para el CORRELADOR del
- * ruido (parte 2). Los dos son FIR de 30 coeficientes fijos:
+ * ruido (parte 2). Los dos son FIR de COEFS_L = 8 coeficientes fijos:
  *
  *     y(n) = sum_{k=0}^{L-1} h[k] x(n-k)
  *

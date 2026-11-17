@@ -3,6 +3,8 @@
 Laboratorio 4 de **Procesamiento Digital de Señales** (FCEFyN – UNC).
 
 > **Consigna.** Parte 1: mostrar el proceso adaptativo de un filtro transversal de 30 coeficientes con LMS, en el esquema de *identificación de planta*, con distintos valores de μ, entrada aleatoria y entrada constante, calculando el MSE cada 100 muestras y la diferencia entre los coeficientes de la planta y los del filtro. Parte 2: usar un FIR de 30 coeficientes para correlacionar un ruido aleatorio con la referencia del procesador adaptativo, sumarle ese ruido a una senoidal que entra a la placa y demostrar que el filtro converge al óptimo que cancela el ruido, mostrando la señal en el osciloscopio.
+>
+> **Indicaciones del docente:** los FIR (planta, correlador y filtro adaptativo) de **5 a 10 coeficientes** (se usa **L = 8**, `COEFS_L` en `coefs.h`) y ruido **AWGN** en la Parte 2.
 
 ```
 PARTE 1 (todo adentro de la placa)              PARTE 2
@@ -70,14 +72,14 @@ Escribir cada comando y Enter (la terminal tiene que mandar Enter como CR o LF):
 | Qué querés ver | Comandos |
 |---|---|
 | Una corrida con μ = 0,01, entrada aleatoria | `U0.01` → `S` |
-| Barrido de μ (0,002 / 0,01 / 0,05 / 0,1 / 0,19 / 0,21) | `B` |
+| Barrido de μ (0,002 / 0,01 / 0,05 / 0,2 / 0,6 / 0,8) | `B` |
 | Entrada constante | `E1` → `B` |
 | Volver a entrada aleatoria | `E0` |
 | Otra amplitud de entrada (potencia) | `A2` → `S` |
-| NLMS | `G2` → `U0.3` → `S` |
+| NLMS | `G2` → `U0.1` → `S` |
 | LMS escrito como en la clase | `G0` → `S` |
 | Ruido de medición σᵥ = 0,01 | `V0.01` → `B` |
-| No mandar las 30 diferencias (más rápido) | `D0` |
+| No mandar las 8 diferencias | `D0` |
 | Cortar la corrida | `X` o SW2 |
 
 Con las teclas: **SW3 corto** pasa al siguiente μ de la lista y **SW2** arranca.
@@ -85,13 +87,13 @@ Con las teclas: **SW3 corto** pasa al siguiente μ de la lista y **SW2** arranca
 Qué sale por la terminal:
 
 ```
-P1I,alg=CMSIS_LMS,mu=1.0000e-02,in=RANDOM,A=1.0000e+00,Px=3.3333e-01,...,mu_max=2.0000e-01,tau=1.5000e+02
-P1P,6.9720e-01,7.0250e-01,...            ← coeficientes de la planta
+P1I,alg=CMSIS_LMS,mu=1.0000e-02,in=RANDOM,A=1.0000e+00,Px=3.3333e-01,...,mu_max=7.5000e-01,tau=1.5000e+02
+P1P,6.9720e-01,5.7620e-01,...            ← coeficientes de la planta
 P1M,100,4.2174e-01,1.1709e+00,-3.7496e+00 ← n, MSE del bloque, ||p-w||², MSE en dB
-P1D,100,5.2e-01,...                      ← p_k - w_k de los 30 coeficientes
+P1D,100,5.2e-01,...                      ← p_k - w_k de los 8 coeficientes
 ...
 P1W,6.9665e-01,...                        ← coeficientes aprendidos
-P1F,20000,3.2010e-06,4.0722e-06,412,OK    ← ciclos por muestra del LMS y estado
+P1F,5000,1.4e-12,3.5e-12,...,OK          ← ciclos por muestra del LMS y estado
 ```
 
 ### Paso 6 – Parte 1 con MATLAB (para el informe)
@@ -122,27 +124,23 @@ P1F,20000,3.2010e-06,4.0722e-06,412,OK    ← ciclos por muestra del LMS y estad
 1. En la terminal mandar `2` (o mantener **SW3 más de 0,7 s**). LED rojo = Parte 2. Empiezan a salir líneas `P2M` 80 veces por segundo (`M0` las apaga, `M10` manda 1 de cada 10).
 2. **Osciloscopio:** CH1 en J1-4, acople DC, 200 mV/div, base de tiempo 2 ms/div, centrar en 1,65 V.
 3. Elegir qué sale por el DAC con **SW3 corto** o con `O<n>`:
-   - `O0` → **d** = señal + ruido (la senoidal casi no se ve).
+   - `O0` → **d** = señal + ruido (la senoidal con mucho ruido encima).
    - `O1` → **e** = salida del cancelador (la senoidal limpia).
    - `O2` → **y** = ruido estimado. `O3` → **s** = senoidal sola. `O4` → residuo ×4.
 4. Captura 1: `O0`, foto de la pantalla → `img/placa/osc_d.png`.
 5. Captura 2: `O1`, esperar un par de segundos → `img/placa/osc_e.png`.
-6. **Ver el aprendizaje:** `O1`, base de tiempo 100 ms/div, disparo **externo** con el cable de TRIG (J1-8), flanco ascendente, modo **Single**. Apretar **SW2** (pone los coeficientes en cero): la pantalla muestra la senoidal ruidosa que se va limpiando en ~1 s. Foto → `img/placa/osc_convergencia.png`. Para que sea más lento y se vea mejor: `U0.001` (τ ≈ 1,2 s, base de tiempo 500 ms/div).
-7. Comandos útiles: `U<mu>` cambia μ sin borrar lo aprendido, `Z` = SW2, `C` imprime los coeficientes y los óptimos, `T` imprime el tiempo de cómputo, `Q1` pone el correlador en la rama de la referencia (como la figura 2 de la consigna), `Q0` lo vuelve al camino del ruido, `A<amp>` cambia la amplitud del ruido.
+6. **Ver el aprendizaje:** `O1`, base de tiempo 100 ms/div, disparo **externo** con el cable de TRIG (J1-8), flanco ascendente, modo **Single**. Apretar **SW2** (pone los coeficientes en cero): la pantalla muestra la senoidal ruidosa que se va limpiando en ~1 s (esta prueba se muestra en vivo en la presentación; no va en el informe). Para que sea más lento y se vea mejor: `U0.002` (τ ≈ 0,8 s, base de tiempo 500 ms/div).
+7. Comandos útiles: `U<mu>` cambia μ sin borrar lo aprendido, `Z` = SW2, `C` imprime los coeficientes y los óptimos, `T` imprime el tiempo de cómputo, `Q1` pone el correlador en la rama de la referencia (como la figura 2 de la consigna), `Q0` lo vuelve al camino del ruido, `A<sigma>` cambia el desvío del AWGN (por defecto 0,2 V).
 8. Mandar `T` y anotar la línea `P2T` en el informe (ciclos por muestra de toda la interrupción). Opcional: CH2 en PROC (J2-18) para ver el ancho del pulso contra el período de 125 µs.
 
 ### Paso 9 – Parte 2 con MATLAB
 
 1. Cerrar la terminal. Con el generador conectado, correr las secciones **E6 y E7** de `tp4_experimentos.m`.
-2. Copiar `img/p2_e6_mu_red.png` a `documentacion/TP4/img/placa/`.
+2. Copiar `img/p2_e6_mu_red.png` y `img/p2_e7_ref_red.png` a `documentacion/TP4/img/placa/`.
 
 ### Paso 10 – Informe
 
-`documentacion/TP4/main.tex` ya tiene la teoría, el diseño, los diagramas, los resultados simulados y el código. Faltan:
-
-- los integrantes (`\Integrantes`, arriba de todo) y los modelos de generador y osciloscopio (tabla de equipamiento);
-- las capturas de la placa en `img/placa/` con los nombres de arriba (mientras no estén, el PDF muestra un recuadro que dice qué falta);
-- la tabla de ciclos y el tiempo de la línea `P2T`.
+`documentacion/TP4/main.tex` tiene la teoría, el diseño, los diagramas, los resultados simulados, los medidos en la placa (Parte 1 y Parte 2, con las capturas en `img/placa/`) y el código. Está completo.
 
 Se compila con `pdflatex main.tex` (dos veces) o subiendo la carpeta a Overleaf.
 
@@ -151,8 +149,8 @@ Se compila con `pdflatex main.tex` (dos veces) o subiendo la carpeta a Overleaf.
 ## Detalles de implementación
 
 - **LMS.** `lms.c` tiene la rutina de la diapositiva *Implementación en DSP* (`LMS_ALG_CLASE`), `arm_lms_f32` y `arm_lms_norm_f32`, todas con `blockSize = 1`. Las tres usan `w += μ·e·x` (la convención de CMSIS), que equivale a `2μ` de la teoría: la condición de convergencia queda **0 < μ < 2/(L·Px)**. CMSIS guarda los coeficientes invertidos en el tiempo; `lms_get_w()` los da vuelta.
-- **Planta** (`coefs.c`): pₖ = 0,8·e^(−k/8)·sin(0,3π(k+1)) + 0,05·cos(0,9k), 30 coeficientes. **Correlador:** cₖ = 0,6·0,8ᵏ (energía 1, fase mínima).
-- **Ruido:** xorshift32 propio, uniforme en [−A, A) (Px = A²/3), idéntico en la placa y en la PC.
+- **Planta** (`coefs.c`): pₖ = 0,8·e^(−k/3)·sin(0,3π(k+1)) + 0,05·cos(0,9k), 8 coeficientes. **Correlador:** cₖ = √(1−0,7²)·0,7ᵏ (energía ≈ 1, fase mínima).
+- **Números aleatorios:** xorshift32 propio, idéntico en la placa y en la PC. Parte 1: entrada uniforme en [−A, A) (Px = A²/3). Parte 2: **AWGN** de desvío σ (suma de 12 uniformes, teorema central del límite; Px = σ²).
 - **Parte 2:** CTIMER0 a 8 kHz dispara el ADC; la ISR del ADC resta la continua (seguimiento con α = 1/4096), genera el ruido, lo pasa por el correlador, corre el LMS y escribe el DAC. Como la señal limpia `s` se conoce, se mide el ruido residual `e − s` exacto.
 - **Salida serie:** texto CSV con floats formateados a mano (`txt_out.c`), para no depender de que `printf` tenga habilitados los floats.
 
@@ -160,14 +158,14 @@ Se compila con `pdflatex main.tex` (dos veces) o subiendo la carpeta a Overleaf.
 
 | Caso | μ_max | τ del MSE |
 |---|---|---|
-| Aleatoria, A = 1 (Px = 1/3) | 0,2 | 1,5/μ muestras (μ = 0,01 → 150) |
-| Constante, A = 1 | 0,0667 | 1/(2μ·30) muestras |
-| NLMS | 2 | 15/μ muestras |
-| Cancelador, ruido 0,4 V (Px = 0,0533) | 1,25 | 9,4/μ muestras (μ = 0,005 → 0,23 s a 8 kHz) |
+| Aleatoria, A = 1 (Px = 1/3) | 0,75 | 1,5/μ muestras (μ = 0,01 → 150) |
+| Constante, A = 1 | 0,25 | 1/(2μ·8) muestras |
+| NLMS | 2 | 4/μ muestras |
+| Cancelador, AWGN σ = 0,2 V (Px = 0,04) | 6,25 | 12,5/μ muestras (μ = 0,01 → 0,16 s a 8 kHz) |
 
 ## Verificación hecha
 
 - El firmware compila sin warnings propios con `arm-none-eabi-gcc` contra el MCUXpresso SDK 26.09 y CMSIS-DSP 1.16.2 (`TP4/tools/arm_build`): ~45 KB de flash y ~7 KB de RAM.
-- `parte1.c` y `parte2.c` corridos en la PC con la misma CMSIS-DSP (`TP4/tools/host_sim`): la rutina de clase y `arm_lms_f32` dan resultados idénticos bit a bit; la divergencia aparece en μ = 0,2 (aleatoria) y entre 0,06 y 0,07 (constante), como predice la teoría; el desajuste con ruido de medición coincide con M = (μ·trR/2)/(1 − μ·trR/2).
+- `parte1.c` y `parte2.c` corridos en la PC con la misma CMSIS-DSP (`TP4/tools/host_sim`): la rutina de clase y `arm_lms_f32` dan resultados idénticos bit a bit; la divergencia aparece entre 0,6 y 0,8 (aleatoria, límite 0,75) y entre 0,24 y 0,26 (constante, límite 0,25), como predice la teoría; el desajuste con ruido de medición coincide con M = (μ·trR/2)/(1 − μ·trR/2).
 - Los scripts de MATLAB (parser y gráficos) se probaron en Octave con los registros simulados.
-- **Falta probarlo en la placa**: los periféricos (ADC, DAC, CTIMER, UART, pines) son los mismos del TP3.
+- Probado en la placa con la versión de 30 coeficientes (13/11/2026); hay que repetir las mediciones con L = 8.

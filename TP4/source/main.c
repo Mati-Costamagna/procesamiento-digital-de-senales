@@ -3,8 +3,8 @@
  * Filtros adaptativos (LMS) en la FRDM-MCXN947 (Cortex-M33 con FPU y DSP).
  *
  * PARTE 1 - Identificación de planta (parte1.c). No usa ADC ni DAC: la placa
- *   simula la planta (FIR de 30 coeficientes fijos), la entrada (aleatoria o
- *   constante) y el filtro adaptativo LMS de 30 coeficientes. Cada 100
+ *   simula la planta (FIR de 8 coeficientes fijos), la entrada (aleatoria o
+ *   constante) y el filtro adaptativo LMS de 8 coeficientes. Cada 100
  *   muestras manda por el puerto serie el MSE promedio y la diferencia entre
  *   los coeficientes de la planta y los del filtro.
  *
@@ -85,9 +85,10 @@ static volatile uint32_t s_stats_wr;
 static volatile uint32_t s_stats_rd;
 static volatile uint32_t s_stats_lost;
 
-/* Tiempo de procesamiento por muestra (ISR), en ciclos */
+/* Tiempo de procesamiento por muestra (ISR), en ciclos. El acumulador es de
+ * 64 bits: con ~600 ciclos a 8 kHz uno de 32 bits desborda en ~15 minutos. */
 static volatile uint32_t s_cyc_max;
-static volatile uint32_t s_cyc_acc;
+static volatile uint64_t s_cyc_acc;
 static volatile uint32_t s_cyc_n;
 
 /* SysTick y teclas */
@@ -465,11 +466,21 @@ static void p2_stop(void)
 static void p2_print_timing(void)
 {
     txt_line_t ln;
-    const uint32_t n   = s_cyc_n;
-    const uint32_t avg = (n > 0U) ? (s_cyc_acc / n) : 0U;
+    /* Copia y reinicia los contadores con la interrupción del ADC apagada:
+     * cada T mide desde el T anterior (o desde que arrancó la parte 2). */
+    (void)DisableIRQ(APP_ADC_IRQn);
+    const uint64_t acc  = s_cyc_acc;
+    const uint32_t n    = s_cyc_n;
+    const uint32_t cmax = s_cyc_max;
+    s_cyc_acc           = 0U;
+    s_cyc_n             = 0U;
+    s_cyc_max           = 0U;
+    (void)EnableIRQ(APP_ADC_IRQn);
+    const uint32_t avg = (n > 0U) ? (uint32_t)(acc / n) : 0U;
     txt_begin(&ln, "P2T");
     txt_kv_u32(&ln, "cyc_prom", avg);
-    txt_kv_u32(&ln, "cyc_max", s_cyc_max);
+    txt_kv_u32(&ln, "cyc_max", cmax);
+    txt_kv_u32(&ln, "n", n);
     txt_kv_u32(&ln, "f_cpu", SystemCoreClock);
     txt_kv_f32(&ln, "us_prom", (float)avg * 1.0e6f / (float)SystemCoreClock);
     txt_kv_f32(&ln, "us_disp", 1.0e6f / s_p2_fs_real);
@@ -489,7 +500,7 @@ static void print_help(void)
               "#   1 / 2      pasar a la Parte 1 / Parte 2\r\n"
               "#   U<mu>      paso de adaptacion (ej. U0.01)\r\n"
               "#   G<0|1|2>   algoritmo: 0 LMS de clase, 1 arm_lms_f32, 2 arm_lms_norm_f32 (NLMS)\r\n"
-              "#   A<amp>     P1: amplitud de la entrada | P2: amplitud del ruido (V)\r\n"
+              "#   A<amp>     P1: amplitud de la entrada | P2: desvio del ruido AWGN (V)\r\n"
               "#   P1: E<0|1> entrada aleatoria/constante, V<sigma> ruido de medicion,\r\n"
               "#       N<muestras>, R<semilla>, D<0|1> mandar diferencias, S arrancar,\r\n"
               "#       B barrido de mu, X cortar\r\n"

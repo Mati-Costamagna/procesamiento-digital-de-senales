@@ -7,10 +7,10 @@
  *
  *   generador ──► ADC ──► s(n) ─────────────────(+)──► d(n) = s(n) + n'(n) ─(+)──► e(n) ──► DAC ─► osc.
  *                                                ▲                           ▲ -     (≈ s(n))
- *   random r(n) ──► CORRELADOR C(z) ──► n'(n) ───┘                           │
- *        │          (FIR 30 coef. fijos)                                     │ y(n) (≈ n'(n))
+ *   AWGN   r(n) ──► CORRELADOR C(z) ──► n'(n) ───┘                           │
+ *        │          (FIR 8 coef. fijos)                                      │ y(n) (≈ n'(n))
  *        └──────────────────────────────► x(n) = r(n) ──► FIR ADAPTATIVO ────┘
- *                                                          W(z), 30 coef., LMS
+ *                                                          W(z), 8 coef., LMS 
  *
  *   El ruido que contamina la señal (n') y la referencia (r) están correlacionados
  *   a través de C(z). El filtro óptimo (Wiener) es W = C: el procesador "copia"
@@ -19,9 +19,11 @@
  * Topología alternativa (P2_CORR_EN_REFERENCIA), la que está dibujada en la
  * figura 2 del enunciado: el ruido entra directo a d(n) = s(n) + r(n) y el
  * correlador está en la rama de la referencia, x(n) = C{r}(n). Ahora el
- * óptimo es W = C^-1. Como C(z) = 0,6/(1 - 0,8 z^-1) (truncado a 30
+ * óptimo es W = C^-1. Como C(z) = 0,714/(1 - 0,7 z^-1) (truncado a 8
  * coeficientes) es de fase mínima, su inversa es estable y prácticamente un
- * FIR de 2 coeficientes: W ≈ [1/0,6, -0,8/0,6, 0, ...] = [1,667, -1,333, 0, ...].
+ * FIR de 2 coeficientes: W ≈ [1/0,714, -0,7/0,714, 0, ...] = [1,400, -0,980, 0, ...].
+ *
+ * r(n) es ruido blanco gaussiano (AWGN) de desvío noise_amp (ver prng_gauss).
  *
  * Como el ruido se genera adentro de la placa, se conoce s(n) "limpia" y se
  * puede medir exactamente cuánto ruido queda: residuo(n) = e(n) - s(n).
@@ -59,7 +61,7 @@ typedef struct
 {
     lms_alg_t alg;
     float mu;
-    float noise_amp; /* r(n) uniforme en [-a, a] */
+    float noise_amp; /* desvío estándar (V) del AWGN r(n) */
     p2_topo_t topo;
     uint32_t seed;
     uint32_t block;  /* muestras por bloque de estadísticas (100) */
