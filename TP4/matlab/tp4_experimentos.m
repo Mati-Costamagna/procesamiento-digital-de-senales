@@ -29,12 +29,12 @@ sin_vivo = struct('vivo', false);
 % es más bajo cuanto más grande es mu.
 d = tp4_captura(PUERTO, {'1', 'E0', 'A1', 'V0', 'R1', 'N5000', 'D1', 'B'}, ...
     'P1B,FIN', r('p1_e1_random_barrido.txt'));
-% tp4_graficos_p1(d, '(entrada aleatoria, A = 1)', IMG, 'p1_e1_random');
+tp4_graficos_p1(d, '(entrada aleatoria, A = 1)', IMG, 'p1_e1_random');
 
 %% Parte 1 - E2: entrada constante, A = 1, barrido de mu (límite 2/(L A^2) = 0,2)
 d = tp4_captura(PUERTO, {'1', 'E1', 'A1', 'V0', 'R1', 'N5000', 'D1', 'B'}, ...
     'P1B,FIN', r('p1_e2_const_barrido.txt'));
-% tp4_graficos_p1(d, '(entrada constante, A = 1)', IMG, 'p1_e2_const');
+tp4_graficos_p1(d, '(entrada constante, A = 1)', IMG, 'p1_e2_const');
 
 %% Parte 1 - E3: influencia de la potencia de entrada (mu fijo = 0,05)
 % En Q15 la amplitud tiene que cumplir A <= 1.
@@ -45,7 +45,7 @@ for A = [0.125 0.25 0.5 1]
     corridas = [corridas; d.p1]; %#ok<AGROW>
 end
 d3.p1 = corridas;
-% tp4_graficos_p1(d3, '(\mu = 0,05, distintas A)', IMG, 'p1_e3_potencia');
+tp4_graficos_p1(d3, '(\mu = 0,05, distintas A)', IMG, 'p1_e3_potencia');
 
 %% Parte 1 - E4: efecto de Q15 con poca potencia de entrada (A = 0,25)
 % Si |e mu x| es menor que 1 LSB, arm_lms_q15 trunca la actualización a 0 (o
@@ -58,13 +58,13 @@ for mu = [0.002 0.01 0.05 0.2 0.5]
     corridas = [corridas; d.p1]; %#ok<AGROW>
 end
 d4.p1 = corridas;
-% tp4_graficos_p1(d4, '(A = 0,25: piso de cuantización de Q15)', IMG, 'p1_e4_q15');
+tp4_graficos_p1(d4, '(A = 0,25: piso de cuantización de Q15)', IMG, 'p1_e4_q15');
 fprintf('Ciclos por muestra de arm_lms_q15 (L = 10): %g\n', d4.p1(end).fin.cyc);
 
 %% Parte 1 - E5: ruido de medición (sigma_v = 0,01): desajuste vs. mu
 d = tp4_captura(PUERTO, {'1', 'E0', 'A1', 'V0.01', 'R1', 'N5000', 'D0', 'B'}, ...
     'P1B,FIN', r('p1_e5_ruido_barrido.txt'));
-% tp4_graficos_p1(d, '(\sigma_v = 0,01)', IMG, 'p1_e5_ruido');
+tp4_graficos_p1(d, '(\sigma_v = 0,01)', IMG, 'p1_e5_ruido');
 
 %% Parte 2 - E6: cancelador con la topología de la figura 2 (Q1), distintos mu
 % Generador: senoidal 200 Hz, 1 Vpp, offset 1,65 V en ADC0_A0 (J4[2]). Ver README.
@@ -89,7 +89,7 @@ for mu = mus
     tramos = [tramos; t]; %#ok<AGROW>
 end
 d6.p2 = tramos;
-% tp4_graficos_p2(d6, '(figura 2: W_{opt} = C^{-1})', IMG, 'p2_e6_mu');
+tp4_graficos_p2(d6, '(figura 2: W_{opt} = C^{-1})', IMG, 'p2_e6_mu');
 
 %% Parte 2 - E7: cancelador clásico (correlador en el camino del ruido, Q0)
 mus7 = [0.01 0.02 0.05];
@@ -109,7 +109,7 @@ for mu = mus7
     tramos = [tramos; t]; %#ok<AGROW>
 end
 d7.p2 = tramos;
-% tp4_graficos_p2(d7, '(correlador en el ruido: W_{opt} = C)', IMG, 'p2_e7_ruido');
+tp4_graficos_p2(d7, '(correlador en el ruido: W_{opt} = C)', IMG, 'p2_e7_ruido');
 
 %% Parte 2 - E8: formas de onda del aprendizaje (captura de 2000 muestras desde el reinicio)
 % Z2000 pone los coeficientes en cero y graba d, e, y, s, x durante 2000
@@ -120,7 +120,7 @@ d = tp4_captura(PUERTO, {'2', 'M0', 'Q1', 'A0.25', 'U0.05', 'Z2000'}, 'CAPF', ..
 tp4_graficos_cap(d, '(desde el reinicio)', IMG, 'p2_e8');
 % Una captura ya convergida (sin reiniciar): espectros de d y e
 % d = tp4_captura(PUERTO, {'K2000'}, 'CAPF', r('p2_e8_captura_conv.txt'), sin_vivo);
-% tp4_graficos_cap(d, '(convergido)', IMG, 'p2_e8_conv');
+tp4_graficos_cap(d, '(convergido)', IMG, 'p2_e8_conv');
 
 % Vuelve a la configuración por defecto
 tp4_captura(PUERTO, {'Q1', 'A0.25', 'U0.02', 'M1', 'Z'}, 1, '', sin_vivo);
