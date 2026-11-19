@@ -81,7 +81,7 @@ function figs = tp4_graficos_p1(datos, titulo, carpeta, prefijo)
     if ~isempty(j) && ~isempty(R(j).diff)
         f = figure('Name', 'P1 - diferencia de coeficientes', 'Color', 'w');
         subplot(2, 1, 1);
-        nk = min(8, size(R(j).diff, 2));
+        nk = size(R(j).diff, 2);          % los L = 10 coeficientes
         plot(R(j).n_diff, R(j).diff(:, 1:nk), 'LineWidth', 1.1);
         grid on;
         xlabel('muestra n'); ylabel('p_k - w_k');
