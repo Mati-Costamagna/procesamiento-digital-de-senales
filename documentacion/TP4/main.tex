@@ -1,27 +1,24 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%  Laboratorio 4 - Filtros adaptativos LMS en MCXN947
+%  Laboratorio 4 - Filtros adaptativos LMS en MCXN947 (dos núcleos, Q15)
 %  Estructura de carpetas (igual que en los TP anteriores):
 %     main.tex
 %     informe-fcefyn.sty      -> copia de documentacion/TP3/
-%     img/                    -> logos, figuras simuladas (las genera
-%                                TP4/tools/host_sim/figuras_informe.py)
-%     img/placa/              -> capturas tomadas en el laboratorio
-%     src/tablas_sim.tex      -> tablas de la simulación (también generadas)
+%     img/                    -> logos, figuras de MATLAB y fotos del osciloscopio
 %
-%  Capturas del laboratorio que usa este documento (las que falten aparecen
-%  como un recuadro rojo con el nombre esperado):
-%     img/placa/p1_e1_random_mse.png   tp4_experimentos.m, sección E1
-%     img/placa/p1_e1_random_diff.png  tp4_experimentos.m, sección E1
-%     img/placa/p1_e2_const_coef.png   tp4_experimentos.m, sección E2
-%     img/placa/p1_e5_ruido_mse.png    tp4_experimentos.m, sección E5
-%     img/placa/terminal_p1.png        terminal serie durante una corrida
-%     img/placa/osc_d.png              osciloscopio, DAC = d (O0)
-%     img/placa/osc_e.png              osciloscopio, DAC = e (O1)
-%     img/placa/p2_e6_mu_red.png       tp4_experimentos.m, sección E6
-%     img/placa/p2_e7_ref_red.png      tp4_experimentos.m, sección E7
+%  Figuras que usa este documento:
+%     img/p1_curva_aprendizaje.png   tp4_experimentos.m, sección E1 (_mse)
+%     img/p1_coeff_finales.png       tp4_experimentos.m, sección E1 (_coef)
+%     img/p2_convergiendo.png        osciloscopio, CH1 = s, CH2 = e (convergiendo)
+%     img/p2_regimen.png             osciloscopio, CH1 = s, CH2 = e (en régimen)
 %
-%  El Anexo incluye los fuentes de ../../TP4/source y ../../TP4/matlab, con la
-%  ruta relativa a esta carpeta (si se compila fuera del repositorio aparece
+%  Figuras pendientes (aparecen como un recuadro rojo con el nombre esperado;
+%  son los nombres con los que las guarda TP4/matlab/tp4_experimentos.m):
+%     img/p1_e1_random_diff.png, img/p1_e2_const_mse.png, img/p1_e2_const_coef.png,
+%     img/p1_e3_potencia_mse.png, img/p1_e4_q15_mse.png, img/p1_e5_ruido_mse.png,
+%     img/p2_e6_mu_red.png, img/p2_e7_ruido_red.png
+%
+%  El Anexo incluye los fuentes de ../../TP4/TP4_core0, TP4_core1 y matlab, con
+%  la ruta relativa a esta carpeta (si se compila fuera del repositorio aparece
 %  una marca roja en su lugar).
 %
 %  Todo lo que aparece entre corchetes rojos (\completar{...}) es contenido
@@ -38,7 +35,7 @@
 \carrera{Ingeniería en Computación}
 \subtitulo{Laboratorio 4}
 \tema{Filtros adaptativos LMS en MCXN947}
-\plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} CMSIS-DSP \textperiodcentered{} MATLAB}
+\plataforma{FRDM-MCXN947 (dos Cortex-M33) \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} CMSIS-DSP \textperiodcentered{} MATLAB}
 \autor{Costamagna, Matias Javier}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
 \autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
 \autor{Rivera, Mariano}{45.432.921}{luismarianorivera.25@mi.unc.edu.ar}
@@ -50,31 +47,27 @@
 
 \graphicspath{{img/}}
 \newcommand{\Repo}{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}
-
-% Tablas generadas por la simulación (TP4/tools/host_sim/figuras_informe.py)
-\input{src/tablas_sim.tex}
+\newcommand{\lmsq}{\texttt{arm\_lms\_q15}}
 
 % Tipos propios de este trabajo en los listados de código
-\lstset{morekeywords=[2]{lms_t,lms_alg_t,p1_cfg_t,p1_io_t,p1_status_t,p2_cfg_t,
-  p2_stats_t,p2_out_t,p2_topo_t,prng_t,fir_fijo_t,txt_line_t,
-  arm_lms_instance_f32,arm_lms_norm_instance_f32,size_t}}
+\lstset{morekeywords=[2]{memoria_compartida_t,bloque_t,arm_lms_instance_q15,size_t,va_list}}
 
-% \figplaca[ancho]{archivo en img/placa}{descripción}: captura del laboratorio
-% dentro de una figura o subfigura; si falta, recuadro rojo como \captura.
-\newcommand{\figplaca}[3][0.85\linewidth]{%
-  \IfFileExists{img/placa/#2}{\includegraphics[width=#1]{placa/#2}}{%
+% \figmedida[ancho]{archivo en img/}{descripción}: figura medida en la placa;
+% si todavía no está en img/, dibuja un recuadro rojo con el nombre esperado.
+\newcommand{\figmedida}[3][0.85\linewidth]{%
+  \IfFileExists{img/#2}{\includegraphics[width=#1]{#2}}{%
     \stepcounter{pendientes}%
     \begin{tikzpicture}
       \node[draw=rojoaviso,dashed,thick,rounded corners=3pt,fill=rojoaviso!4,
             minimum width=#1,minimum height=3.2cm,align=center,text width=#1,
             font=\sffamily\small,text=rojoaviso]
-        {Captura pendiente: \textbf{#3}\\[3pt] guardar como
-         \texttt{img/placa/\detokenize{#2}}};
+        {Figura pendiente: \textbf{#3}\\[3pt] guardar como
+         \texttt{img/\detokenize{#2}}};
     \end{tikzpicture}}}
 
 \tikzset{
   blk/.style={draw, thick, rounded corners=2pt, align=center, minimum height=1cm, fill=blue!4},
-  sum/.style={draw, thick, circle, inner sep=0pt, minimum size=5mm},
+  sum/.style={draw, thick, circle, inner sep=0pt, minimum size=6mm},
   arr/.style={-{Latex[length=2.2mm]}, thick},
 }
 
@@ -111,20 +104,26 @@ sumarle el ruido. Demostrar que el procesador adaptativo converge al filtro
 osciloscopio.
 \end{consigna}
 
-\textbf{Indicaciones del docente.} En lugar de 30 coeficientes, los FIR (la planta, el
-correlador y el filtro adaptativo) se hicieron de $L = 8$ coeficientes (se pidió entre 5 y 10),
-y el ruido de la Parte 2 es ruido blanco gaussiano aditivo (AWGN). El largo está definido en un
-solo lugar (\texttt{COEFS\_L} en \archivo{coefs.h}).
+\textbf{Indicaciones de la cátedra.} Respecto de la consigna se hicieron tres cambios:
+\begin{itemize}
+  \item los FIR (la planta, el correlador y el filtro adaptativo) tienen $L = 10$ coeficientes
+  en lugar de 30. El largo está definido en un solo lugar (\texttt{N\_COEF} en
+  \archivo{TP4_core0.c});
+  \item el ruido de la Parte 2 es ruido blanco gaussiano aditivo (AWGN);
+  \item el procesador adaptativo es \lmsq{} de CMSIS-DSP, en punto fijo Q15, en las dos partes.
+  Es la única implementación del LMS del firmware.
+\end{itemize}
 
-La cátedra propone la FRDM-K64F (Cortex-M4); el trabajo se hizo en la
-FRDM-MCXN947, cuyo núcleo Cortex-M33 tiene la misma FPU de simple precisión y
-las mismas instrucciones DSP, y corre la misma biblioteca CMSIS-DSP.
+El trabajo se hizo en la FRDM-MCXN947, que tiene \textbf{dos} núcleos Cortex-M33. El core0 tiene 
+FPU de simple precisión y las mismas instrucciones DSP que el Cortex-M4, y corre la misma 
+biblioteca CMSIS-DSP; el core1 no tiene ni FPU ni extensiones DSP. Por eso el trabajo se 
+repartió: el core0 hace todo el procesamiento y el core1 sólo atiende la comunicación con la PC.
 
 Todo el código está en la carpeta \archivo{TP4/} del repositorio
 \begin{center}\url{\Repo}\end{center}
-Ahí están el firmware en \texttt{TP4/source}, los
-scripts de MATLAB en \texttt{TP4/matlab} y una simulación en la PC que corre exactamente el
-mismo código C en \texttt{TP4/tools/host\_sim}.
+Ahí están los proyectos de MCUXpresso de los dos núcleos (\texttt{TP4/TP4\_core0} y
+\texttt{TP4/TP4\_core1}) y los scripts de MATLAB (\texttt{TP4/matlab}) que manejan la placa
+por el puerto serie y generan las figuras de este informe.
 
 % ===========================================================================
 \section{Marco teórico}
@@ -171,12 +170,54 @@ $\mu = 2\mu_t$. En todo el informe se usa el $\mu$ de CMSIS, con lo que las fór
   &\text{desajuste:} && M = \frac{\xi_{exceso}}{\xi_{min}} \approx \frac{\mu\,\mathrm{tr}(\mathbf{R})/2}{1-\mu\,\mathrm{tr}(\mathbf{R})/2}
   \approx \frac{\mu}{2} L P_x \label{eq:M}
 \end{align}
+Cuanto más grande es $\mu$, más rápido converge el filtro pero mayor es el desajuste. Si las
+condiciones no cambian, la forma clásica de reducir el error final es achicar $\mu$. La
+excepción es el filtro en punto fijo, que se analiza a continuación.
 
-\subsection{LMS normalizado}
-En el NLMS (\texttt{arm\_lms\_norm\_f32}) el paso se divide por la energía de la entrada en la
-ventana del filtro, $E_n = \sum_{k=0}^{L-1}x_{n-k}^2 \approx L P_x$:
-$w_k \leftarrow w_k + \mu\, e_n x_{n-k}/E_n$. El paso efectivo es $\mu/(LP_x)$, así que la
-condición $0<\mu<2$ y la velocidad de convergencia ya no dependen de la potencia de la entrada.
+\subsection{LMS en punto fijo: \texorpdfstring{\texttt{arm\_lms\_q15}}{arm\_lms\_q15}}\label{sec:q15}
+En Q15 un número de 16 bits $b$ representa el valor $b/2^{15}$, con rango $[-1, 1)$ y un
+LSB de $2^{-15} \approx 3\times10^{-5}$. Con \texttt{blockSize = 1}, \lmsq{} hace en cada
+muestra:
+\begin{table}[H]
+\centering
+\caption{Lo que hace \lmsq{} en cada muestra y sus consecuencias.}
+\label{tab:q15}
+\small
+\begin{tabular}{p{5.6cm}p{9.2cm}}
+\toprule
+Paso en CMSIS & Consecuencia \\
+\midrule
+$y = \mathrm{SSAT}_{16}\!\left(\sum b_k x_{n-k} \gg (15 - \mathrm{postShift})\right)$ &
+Los coeficientes valen $b_k\,2^{\mathrm{postShift}}/2^{15}$: el rango es $\pm2^{\mathrm{postShift}}$. \\
+$e = (\text{q15\_t})(d - y)$ & \textbf{No satura}: si $|d-y| \ge 1$ el valor da la vuelta. Las
+señales tienen que quedar holgadas dentro de $\pm1$. \\
+$\alpha = (e\,\mu) \gg 15$;\quad $b_k \mathrel{+}= (\alpha\, x_{n-k}) \gg 15$ &
+El paso efectivo es $\mu_{ef} = 2^{\mathrm{postShift}}\mu$. Cada $\gg 15$ trunca hacia
+$-\infty$. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+El truncamiento hacia $-\infty$ descarta, en promedio, medio LSB en cada actualización: cada
+coeficiente recibe un empuje sistemático de $-2^{-16}$ por muestra. En régimen, el
+término de gradiente tiene que compensarlo. Con entrada blanca ($\mathbf{R} = P_x\mathbf{I}$) y
+sin ruido de medición, $e_n = (\mathbf{p}-\mathbf{w})^T\mathbf{X}_n$ y
+$E[e_n x_{n-k}] = P_x(p_k - w_k)$, de modo que
+\begin{equation}
+  E[\Delta w_k] = \mu P_x (p_k - w_k) - 2^{-16} = 0
+  \quad\Rightarrow\quad
+  p_k - w_k = \delta = \frac{2^{-16}}{\mu P_x}. \label{eq:sesgo}
+\end{equation}
+Todos los coeficientes quedan \emph{por debajo} de su valor ideal en la misma cantidad
+$\delta$, y el MSE no baja de
+\begin{equation}
+  \xi_{q} = P_x\,\|\mathbf{p}-\mathbf{w}\|^2 = L\,P_x\,\delta^2 = \frac{L\,2^{-32}}{\mu^2 P_x}. \label{eq:piso}
+\end{equation}
+Este piso de cuantización baja 20~dB por década de $\mu$: es \textbf{al revés} que el desajuste.
+En Q15 un $\mu$ chico no es ``más preciso''. Si $|\mu\, e\, x| < 1$~LSB la actualización se
+trunca a 0 o a $-1$~LSB y el filtro deja de aprender (\emph{stalling}). La aproximación supone que
+la parte que se descarta en cada truncamiento está distribuida uniformemente, lo que vale mientras $e$
+y $x$ tengan una parte aleatoria apreciable.
 
 \subsection{Esquemas usados}
 \textbf{Identificación de planta:} la entrada $x$ excita a la planta $P(z)$ y al filtro
@@ -194,11 +235,11 @@ con $s$. El filtro estima $n'$ a partir de $x$ y el error $e = s + n' - y$ tiend
 \small
 \begin{tabular}{ll}
 \toprule
-Placa & NXP FRDM-MCXN947 (MCXN947, Cortex-M33 a 150 MHz, FPU y DSP) \\
-Entorno & MCUXpresso IDE v11.10.0, SDK FRDM-MCXN947, CMSIS-DSP \\
+Placa & NXP FRDM-MCXN947 \\
+Entorno & MCUXpresso IDE 25.6, SDK 26.06 FRDM-MCXN947, CMSIS-DSP, MCMGR \\
 PC & MATLAB R2024b y terminal serie a 115200 baud \\
-Generador de funciones & senoidal de 200 Hz, 1 Vpp, offset 1,65 V \\
-Osciloscopio & salida del DAC (J1-4) y disparo externo en TRIG (J1-8) \\
+Generador de funciones & - \\
+Osciloscopio & - \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -212,647 +253,586 @@ Osciloscopio & salida del DAC (J1-4) y disparo externo en TRIG (J1-8) \\
 \toprule
 Señal & Pin MCU & Conector & Uso \\
 \midrule
-Entrada analógica (ADC0, canal A2) & P4\_23 & J8 pin 28 & senoidal del generador \\
-Salida DAC0 & P4\_2 & J1 pin 4 & canal 2 del osciloscopio \\
-TRIG (pulso al reiniciar $\mathbf{W}$) & P1\_23 & J1 pin 8 & disparo externo \\
-PROC (en alto mientras procesa) & P4\_0 & J2 pin 18 & tiempo de cómputo \\
+Entrada analógica (ADC0, canal A0) & ADC0\_A0 & J4 pin 2 & senoidal del generador \\
+Salida DAC0 (por defecto $e$) & P4\_2 & J1 pin 4 & canal 1 del osciloscopio \\
+Salida DAC1 (por defecto $d$) & P4\_3 & J1 pin 2 & canal 2 del osciloscopio \\
+CT0\_MAT3 (cuadrada de 8 kHz $= f_s$) & P0\_19 & J2 pin 13 & control de $f_s$ \\
 GND & -- & cualquier GND & masa común \\
-Puerto serie (LPUART4) & P1\_8 / P1\_9 & USB J17 (MCU-Link) & VCOM \\
+Puerto serie (LPUART4, core1) & P1\_8 / P1\_9 & USB J17 (MCU-Link) & VCOM \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-El ADC mide de 0 a 3,3~V, así que la senoidal se monta sobre 1,65~V de continua (1~Vpp, salida
-del generador en High-Z). El firmware estima y resta esa continua con un filtro de seguimiento
-lento ($\alpha = 2^{-12}$), y el DAC saca la señal elegida centrada en 1,65~V.
+El ADC mide de 0 a 3,3~V, así que la senoidal se monta sobre 1,65~V de continua: con 2~Vpp
+queda entre 0,65 y 2,65~V. Antes de conectarla se verificó con el osciloscopio en acople DC.
+El firmware estima y resta esa continua con un filtro de seguimiento lento ($\alpha = 2^{-12}$),
+y los DAC sacan las señales elegidas centradas en 1,65~V.
+
+Pines, relojes y periféricos no se configuran a mano: los genera ConfigTools en
+\texttt{board/} a partir de \archivo{TP4_core0.mex} y \archivo{TP4_core1.mex}, igual que en los
+TP anteriores. El core0 configura los relojes de todo el chip (PLL a 150~MHz, CTIMER0, ADC0,
+DAC0/1 y también el FLEXCOMM4 de la UART); el core1 sólo configura sus pines y la LPUART.
 
 % ===========================================================================
+\newpage
+
 \section{Diseño de la aplicación}
 
+\subsection{Arquitectura: un núcleo procesa, el otro comunica}
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small]
+  % Bloques con saltos de línea explícitos (sin text width): ancho predecible y sin guiones
+  \node[blk] (c0) at (0,0)
+    {\textbf{core0} (FPU + DSP)\\ ISR del ADC:\\ AWGN, correlador,\\ \texttt{arm\_lms\_q15}, DAC\\
+     Parte 1, comandos};
+  \node[blk, fill=yellow!10] (mem) at (5.2,0)
+    {\textbf{Memoria}\\ \textbf{compartida}\\ \texttt{0x2004C000} (8 KB)\\ cola de texto (4 KB)\\
+     cola de comandos\\ bandera \texttt{cortar}};
+  \node[blk] (c1) at (9.1,0) {\textbf{core1}\\(sin FPU)\\LPUART4\\115200 8N1};
+  % Equipos externos (gris), fuera del recuadro del chip
+  \node[blk, fill=gray!8] (pc) at (12.15,0) {PC\\MATLAB};
+  \node[blk, fill=gray!8] (gen) at (-1.15,2.9) {Generador};
+  \node[blk, fill=gray!8] (osc) at (1.35,2.9) {Osciloscopio};
+  \draw[arr] ([yshift=4mm]c0.east) -- node[above, font=\scriptsize]{texto} ([yshift=4mm]mem.west);
+  \draw[arr] ([yshift=-4mm]mem.west) -- node[below, font=\scriptsize]{comandos} ([yshift=-4mm]c0.east);
+  \draw[arr] ([yshift=4mm]mem.east) -- ([yshift=4mm]c1.west);
+  \draw[arr] ([yshift=-4mm]c1.west) -- ([yshift=-4mm]mem.east);
+  \draw[thick, {Latex[length=2.2mm]}-{Latex[length=2.2mm]}] (c1.east) -- node[above, font=\scriptsize]{USB} (pc.west);
+  \draw[arr] (gen) -- node[right, pos=0.3, font=\scriptsize]{ADC0} (gen |- c0.north);
+  \draw[arr] (osc |- c0.north) -- node[right, pos=0.7, font=\scriptsize]{DAC0/1} (osc);
+  \node[draw, dashed, gray, fit=(c0)(mem)(c1), inner sep=6pt] (chip) {};
+  \node[gray, anchor=north east] at (chip.south east) {MCXN947};
+\end{tikzpicture}
+\caption{Reparto del trabajo entre los dos núcleos. El core0 nunca espera a la UART: deja el
+texto en una cola de la memoria compartida y sigue procesando.}
+\label{fig:arq}
+\end{figure}
+
+La figura~\ref{fig:arq} resume cómo se reparte el trabajo:
+\begin{itemize}
+  \item El \textbf{core0} hace todo el procesamiento en tiempo real. Cuando tiene que mandar
+  algo, arma la línea de texto con \texttt{snprintf} y la deja en la cola de la memoria
+  compartida.
+  \item El \textbf{core1} vacía esa cola hacia la UART y arma las líneas de comando que llegan de la
+  PC para pasárselas al core0. Si llega una \texttt{X} al principio de una línea, levanta la bandera
+  \texttt{cortar} sin esperar el Enter, para que el core0 corte enseguida la corrida de la
+  Parte~1.
+  \item La \textbf{memoria compartida} (\texttt{memoria\_compartida\_t}) ocupa la región
+  \texttt{0x2004C000}--\texttt{0x2004DFFF}, la misma que usa el ejemplo multicore del SDK. Son dos
+  colas de un productor y un consumidor: texto core0$\to$core1 y comandos core1$\to$core0. Cada
+  contador lo escribe un solo núcleo y sólo crece (la posición en el buffer es el contador
+  módulo el tamaño), así que no hacen falta semáforos: alcanza con una barrera de memoria
+  (\texttt{\_\_DMB}) entre escribir los datos y publicar el contador. La estructura está escrita
+  en los dos fuentes y las dos copias tienen que ser idénticas.
+  \item \textbf{Arranque}: el core0 inicializa la memoria compartida y arranca al core1 con el
+  MCMGR (\texttt{MCMGR\_StartCore}), pasándole la dirección de la memoria compartida. La imagen
+  del core1 va adentro de la del core0 (región \texttt{SRAM\_CORE1}, \texttt{0x2004E000}), así
+  que sólo hace falta grabar y depurar el core0. Si el core1 no responde en 1~s, el LED azul queda
+  encendido fijo.
+\end{itemize}
+
+La ventaja se ve en la Parte~2: mandar una captura de 2000 muestras a 115200 baudios tarda unos
+10~s, y durante ese tiempo el core0 sigue cancelando el ruido muestra a muestra sin que se note
+en el osciloscopio.
+
 \subsection{Organización del firmware}
-Las dos partes van en un único programa; se pasa de una a otra con una pulsación larga de SW3 o
-con los comandos \texttt{1} y \texttt{2} por el puerto serie. El procesamiento está separado del
-hardware: \texttt{parte1.c} y \texttt{parte2.c} sólo reciben y devuelven números, y
-\texttt{main.c} hace de ``placa'' (teclas, UART, ADC, DAC, timer). Así el mismo código se compila
-también en la PC (\texttt{TP4/tools/host\_sim}), lo que permitió verificar los algoritmos y
-generar las figuras simuladas de este informe antes de ir al laboratorio.
+Igual que en los TP anteriores, todo el programa de cada núcleo está en un solo archivo:
+\archivo{TP4_core0.c} (unas 1100 líneas) y \archivo{TP4_core1.c} (unas 180).
 
 \begin{table}[H]
 \centering
-\caption{Módulos del firmware.}
-\begin{tabular}{p{3.2cm}p{11.3cm}}
+\caption{Secciones de \archivo{TP4_core0.c}.}
+\small
+\begin{tabular}{p{3.6cm}p{11cm}}
 \toprule
-\texttt{lms.c/.h} & Filtro adaptativo con tres implementaciones intercambiables: la rutina
-\texttt{LMSfir} de la clase, \texttt{arm\_lms\_f32} y \texttt{arm\_lms\_norm\_f32}. \\
-\texttt{parte1.c/.h} & Identificación de planta: entrada, planta, LMS, MSE cada 100 muestras. \\
-\texttt{parte2.c/.h} & Cancelador: ruido, correlador, LMS, estadísticas por bloque. \\
-\texttt{coefs.c/.h} & Coeficientes fijos de la planta y del correlador. \\
-\texttt{fir\_fijo.h} & FIR de coeficientes fijos con buffer circular. \\
-\texttt{prng.h} & Generador pseudoaleatorio xorshift32: uniforme en $[-1,1)$ y gaussiana (AWGN). \\
-\texttt{txt\_out.c/.h} & Arma las líneas CSV con floats sin depender de \texttt{printf}. \\
-\texttt{main.c} & Periféricos, teclas, comandos, ISR de muestreo. \\
-\texttt{app\_config.h} & Todos los parámetros ajustables. \\
+Parámetros & $L = 10$, bloques de 100 muestras, \texttt{postShift} de cada parte, fondo de escala. \\
+Memoria compartida & Estructura compartida y cola de texto (\texttt{poner\_en\_cola}, \texttt{enviar}, \texttt{leer\_comando}). \\
+Coeficientes fijos & Planta, correlador, óptimo de Wiener de la figura 2 y lista de $\mu$ del barrido. \\
+Números aleatorios & xorshift32 (uniforme) y método polar de Marsaglia (AWGN). \\
+FIR fijo & Planta y correlador, en \texttt{float}, con línea de retardo. \\
+Filtro adaptativo & \texttt{lms\_iniciar}, \texttt{lms\_procesar}, \texttt{lms\_leer\_coeficientes} y \texttt{lms\_saturado}, sobre \lmsq. \\
+Parte 1 & \texttt{p1\_correr}: un experimento completo de identificación de planta. \\
+Parte 2 & \texttt{p2\_procesar\_muestra} (en la ISR), \texttt{p2\_atender} (lazo principal), capturas y tiempos. \\
+Interrupciones & SysTick (1 ms), SW2 y SW3, fin de conversión del ADC0. \\
+Comandos y \texttt{main} & Intérprete de comandos, inicialización, arranque del core1 y lazo principal. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Generador pseudoaleatorio.} Se usa un xorshift32 propio en lugar de \texttt{rand()}
-para que la secuencia sea la misma en la placa y en la PC, y para repetir un experimento con
-la misma entrada cambiando sólo $\mu$ (todas las corridas de un barrido usan la semilla 1). Con
-24 bits de mantisa se obtiene una uniforme en $[-A, A)$, de media nula y $P_x = A^2/3$ (entrada
-de la Parte 1). Para el AWGN de la Parte 2 se suman 12 uniformes: por el teorema central del
-límite la suma es prácticamente gaussiana, y como cada una tiene varianza $1/3$, la suma de 12
-tiene varianza 4 y se escala por $1/2$ para obtener $N(0,1)$. Así no hacen falta \texttt{logf},
-\texttt{sqrtf} ni \texttt{cosf} (Box--Muller), y cuesta 12 iteraciones del xorshift.
+En \archivo{TP4_core1.c}, después de esperar a que el core0 inicialice la memoria compartida, el
+lazo principal sólo llama una y otra vez a \texttt{recibir()} y \texttt{transmitir()}, con la
+LPUART en modo \emph{polling}: ninguna de las dos se bloquea.
 
-\paragraph{Implementaciones del LMS.} La rutina de la diapositiva ``Implementación en DSP'' se
-pasó a \texttt{lms\_clase\_step()}: desplaza la línea de retardo, calcula $y$ y adapta. La única
-diferencia es que el error $d-y$ se calcula una vez, con la salida completa de la muestra actual,
-antes de adaptar; en la versión de la diapositiva que funde los tres lazos, el $(d-y)$ usa la $y$
-parcial que se va acumulando. Las funciones de CMSIS se llaman con \texttt{blockSize = 1}
-(muestra a muestra) y guardan los coeficientes en orden invertido en el tiempo, por lo que
-\texttt{lms\_get\_w()} los da vuelta para compararlos con la planta.
+\paragraph{Generador pseudoaleatorio.} Se usa un xorshift32 propio en lugar de \texttt{rand()}
+para repetir un experimento con la misma entrada cambiando sólo $\mu$ (todas las corridas de un
+barrido usan la semilla 1). Con 24 bits de mantisa da una uniforme en $[-A, A)$, de media nula y
+$P_x = A^2/3$ (entrada de la Parte 1). Para el AWGN de la Parte 2 se usa el método polar de
+Marsaglia: se sortean pares $(u, v)$ uniformes en $[-1,1)$ hasta que $s = u^2 + v^2 < 1$
+(se acepta un $\pi/4 \approx 78\%$ de los pares), y $u\sqrt{-2\ln s / s}$ tiene distribución
+$N(0,1)$ exacta, sin aproximaciones como la suma de uniformes. A diferencia de Box--Muller no
+necesita senos ni cosenos. La raíz se calcula con
+\texttt{arm\_sqrt\_f32} (instrucción \texttt{VSQRT} de la FPU) y el logaritmo con una función
+propia sin \texttt{math.h}: se escribe $s = m\,2^{e}$ leyendo los bits del \texttt{float}, y
+$\ln m = 2\,\mathrm{atanh}\frac{m-1}{m+1}$ con cinco términos de la serie (error menor que
+$10^{-6}$, porque $\frac{m-1}{m+1} < 1/3$).
+
+\paragraph{Filtro adaptativo en Q15.} \lmsq{} se llama muestra a muestra
+(\texttt{blockSize = 1}). La planta, el correlador, el AWGN y la senoidal se calculan en
+\texttt{float} (son ``el mundo''), y la referencia $x$ y la deseada $d$ se convierten a Q15, con
+redondeo y saturación, justo antes de entrar al filtro. El $\mu$ también se cuantiza: el
+\texttt{U0.002} queda en $66/2^{15} = 0{,}0020142$, que es el valor que aparece en las leyendas
+de las figuras. CMSIS guarda los coeficientes en orden invertido en el tiempo, y
+\texttt{lms\_leer\_coeficientes()} los da vuelta y los multiplica por $2^{\mathrm{postShift}}$ para
+compararlos con la planta. El escalado se eligió de acuerdo a la tabla~\ref{tab:q15}:
+\begin{itemize}
+  \item \textbf{Parte 1}: \texttt{postShift = 0} ($\mu_{ef} = \mu$, la teoría se aplica directo).
+  La entrada cumple $|x| \le A \le 1$ y la planta está escalada para que
+  $\sum|p_k| = 0{,}896 < 1$, de modo que $d$ nunca satura.
+  \item \textbf{Parte 2}: fondo de escala $1{,}0 = 1{,}65$~V, es decir todo el rango del
+  ADC y los DAC alrededor de la continua. \texttt{postShift = 1} ($\mu_{ef} = 2\mu$), porque uno de
+  los óptimos tiene coeficientes de hasta 1,4.
+\end{itemize}
+En Q15 la divergencia no da números enormes como en punto flotante: los coeficientes se clavan
+en la saturación. El firmware la detecta así (algún $|b_k| \ge 32700$, o un MSE de bloque mayor
+que cuatro veces la potencia de $d$) y corta la corrida con estado \texttt{DIVERGE}.
 
 \subsection{Parte 1: identificación de planta}
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[node distance=1.2cm and 1.5cm]
-  \node[blk] (rnd) {Entrada\\random / constante};
-  \node[blk, right=1.6cm of rnd] (pl) {PLANTA $P(z)$\\FIR 8 coef. fijos};
-  \node[sum, right=1.1cm of pl] (sv) {$+$};
-  \node[above=0.6cm of sv] (v) {$v_n$ (opcional)};
-  \node[sum, right=1.4cm of sv] (s) {$\Sigma$};
-  \node[blk, below=1.0cm of pl] (af) {FIR ADAPTATIVO $W(z)$\\8 coef. -- LMS};
-  \node[right=1.2cm of s] (e) {$e_n$};
-  \coordinate[left=0.8cm of pl] (bif);
-  \draw[arr] (rnd) -- node[above]{$x_n$} (pl);
-  \draw[arr] (bif) |- (af);
+\begin{tikzpicture}[font=\small]
+  \node[blk] (rnd) at (0,0) {Entrada\\aleatoria / constante};
+  \coordinate (bif) at (2.4,0);
+  \node[blk] (pl) at (4.6,0) {PLANTA $P(z)$\\FIR 10 coef. fijos};
+  \node[sum] (sv) at (7.0,0) {$\Sigma$};
+  \node (v) at (7.0,1.4) {$v_n$ (opcional)};
+  \node[sum] (s) at (9.0,0) {$\Sigma$};
+  \coordinate (fb) at (9.8,0);
+  \node (e) at (10.9,0) {$e_n$};
+  % El adaptativo arranca a la derecha de la bifurcación: la rama de x_n entra por su lado
+  \node[blk] (af) at (5.4,-2.0) {FIR ADAPTATIVO $W(z)$\\10 coef. -- \texttt{arm\_lms\_q15}};
+  % Punto auxiliar para que el recuadro contenga la realimentación con margen
+  \coordinate (fbb) at (5.4,-3.15);
+  \draw[arr] (rnd) -- node[above, pos=0.35]{$x_n$} (pl);
   \fill (bif) circle (1.5pt);
+  \draw[arr] (bif) |- (af);
   \draw[arr] (pl) -- (sv);
   \draw[arr] (v) -- (sv);
-  \draw[arr] (sv) -- node[above]{$d_n$} node[below right, pos=0.85]{\scriptsize $+$} (s);
+  \draw[arr] (sv) -- node[above]{$d_n$} node[below, pos=0.88]{\scriptsize $+$} (s);
   \draw[arr] (af) -| node[pos=0.25, above]{$y_n$} node[pos=0.92, right]{\scriptsize $-$} (s);
   \draw[arr] (s) -- (e);
-  \draw[arr, dashed] ($(s)+(0.6,0)$) |- ($(af.south)+(0,-0.5)$) -- ($(af.south)+(0,0)$);
-  \node[draw, dashed, gray, fit=(rnd)(pl)(af)(s)(v), inner sep=8pt, label={[gray]below left:FRDM-MCXN947}] {};
+  \fill (fb) circle (1.5pt);
+  \draw[arr, dashed] (fb) |- ($(af.south)+(0,-0.45)$) -- (af.south);
+  \node[draw, dashed, gray, fit=(rnd)(v)(e)(af)(fbb), inner sep=8pt] (p1box) {};
+  \node[gray, anchor=north east] at (p1box.south east) {core0};
 \end{tikzpicture}
 \caption{Esquema de identificación de planta implementado (figura 1 de la consigna). Todo
-corre dentro del microcontrolador.}
+corre dentro del core0.}
 \label{fig:p1diag}
 \end{figure}
 
-La planta tiene una respuesta al impulso de $L = 8$ muestras con valores arbitrarios fijos,
-$p_k = 0{,}8\,e^{-k/3}\sin(0{,}3\pi(k+1)) + 0{,}05\cos(0{,}9k)$ redondeados a 4 decimales ($\sum p_k^2 = 0{,}974$):
-\[\mathbf{p} = [0{,}6972;\ 0{,}5762;\ 0{,}1156;\ -0{,}2182;\ -0{,}2557;\ -0{,}0994;\ 0{,}0652;\ 0{,}1238].\] Cada experimento procesa $N = 5000$ muestras en bloques de 100. Al
+El esquema implementado es el de la figura~\ref{fig:p1diag}. La planta tiene una respuesta al impulso de $L = 10$ muestras con valores arbitrarios fijos,
+$p_k = 0{,}32\,e^{-k/3}\sin(0{,}3\pi(k+1)) + 0{,}02\cos(0{,}9k)$ redondeados a 4 decimales:
+\[\mathbf{p} = [0{,}2789;\ 0{,}2305;\ 0{,}0462;\ -0{,}0873;\ -0{,}1023;\ -0{,}0397;\ 0{,}0261;\ 0{,}0495;\ 0{,}0302;\ -0{,}0049],\]
+con $\sum|p_k| = 0{,}896$, $\sum p_k^2 = 0{,}157$ y ganancia de continua $\sum p_k = 0{,}427$.
+La entrada se cuantiza a Q15 antes de entrar a la planta, para que la planta y el filtro vean
+exactamente la misma muestra. Cada experimento procesa $N = 5000$ muestras en bloques de 100. Al
 final de cada bloque se envía por el puerto serie:
 \begin{itemize}
-  \item \texttt{P1M,n,mse,werr2,mse\_dB}: el MSE promedio de las 100 muestras,
-  $\frac{1}{100}\sum e_n^2$, y el error de los coeficientes $\|\mathbf{p}-\mathbf{w}\|^2$;
-  \item \texttt{P1D,n,d0,...,d7}: la diferencia $p_k - w_k$ de cada uno de los 8 coeficientes.
+  \item \texttt{P1M,n,mse,werr2}: el MSE promedio de las 100 muestras,
+  $\frac{1}{100}\sum e_n^2$, y el error de los coeficientes $\|\mathbf{p}-\mathbf{w}\|^2$
+  (los dB los calcula MATLAB);
+  \item \texttt{P1D,n,d0,...,d9}: la diferencia $p_k - w_k$ de cada uno de los 10 coeficientes.
 \end{itemize}
-Al principio se manda la configuración (\texttt{P1I}, que incluye $\mu_{max}$ y $\tau$ teóricos)
-y la planta (\texttt{P1P}); al final los coeficientes aprendidos (\texttt{P1W}) y los ciclos de
-CPU promedio por muestra del LMS medidos con el contador \texttt{DWT->CYCCNT} (\texttt{P1F}). Si
-el MSE supera $10^{12}$ la corrida se corta y se informa \texttt{DIVERGE}.
+Al principio se manda la configuración (\texttt{P1I}, que incluye el $\mu$ ya cuantizado y los
+valores teóricos de $\mu_{max}$ y $\tau$) y la planta (\texttt{P1P}); al final, los coeficientes
+aprendidos (\texttt{P1W}) y una línea \texttt{P1F} con los ciclos de CPU promedio por muestra
+del filtro (\lmsq{} más el pasaje a Q15, medidos con el contador \texttt{DWT->CYCCNT}) y el
+estado: \texttt{OK}, \texttt{DIVERGE} o \texttt{CORTADO}. El comando \texttt{B} hace un barrido con
+$\mu = 0{,}002$; 0,01; 0,05; 0,2; 0,5 y 0,7, todos con la misma entrada.
 
 \subsection{Parte 2: cancelador de ruido}
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}
-  \node[blk] (gen) at (0,0) {Generador\\senoidal};
-  \node[blk] (adc) at (2.3,0) {ADC0\\16 bits};
-  \node[blk] (dc) at (4.4,0) {$-$ continua};
-  \node[sum] (s1) at (7.2,0) {$+$};
-  \node[sum] (s2) at (10.2,0) {$\Sigma$};
-  \node[blk] (dac) at (11.7,0) {DAC0};
-  \node (osc) at (13.1,0) {Osc.};
-  \node[blk] (rnd) at (3.0,-1.8) {AWGN $r_n$};
-  \node[blk] (cor) at (7.2,-1.8) {CORRELADOR $C(z)$\\FIR 8 coef. fijos};
-  \node[blk] (af) at (6.6,-3.6) {FIR ADAPTATIVO $W(z)$\\8 coef. -- LMS};
+\begin{tikzpicture}[font=\small]
+  % Fila de la señal
+  \node[blk] (adc) at (0,0) {ADC0\\16 bits};
+  \node[blk] (dc) at (2.35,0) {$-$ continua};
+  \node[sum] (s1) at (4.6,0) {$\Sigma$};
+  \node[sum] (s2) at (9.45,0) {$\Sigma$};
+  \coordinate (fb) at (10.2,0);
+  \node[blk] (dac) at (11.4,0) {DAC0\\DAC1};
+  % Rama del ruido y filtro adaptativo
+  \node[blk] (rnd) at (1.6,-1.65) {AWGN $r_n$};
+  \node[blk] (cor) at (1.6,-3.35) {CORRELADOR $C(z)$\\FIR 10 coef. fijos};
+  \node[blk] (af) at (6.6,-3.35) {FIR ADAPTATIVO $W(z)$\\10 coef. -- \texttt{arm\_lms\_q15}};
+  % Punto auxiliar para que el recuadro contenga la realimentación con margen
+  \coordinate (fbb) at (6.6,-4.55);
+  % Equipos externos (gris), arriba y fuera del recuadro del chip
+  \node[blk, fill=gray!8] (gen) at (0,2.3) {Generador\\senoidal};
+  \node[blk, fill=gray!8] (osc) at (11.4,2.3) {Osciloscopio};
   \draw[arr] (gen) -- (adc);
   \draw[arr] (adc) -- (dc);
   \draw[arr] (dc) -- node[above]{$s_n$} (s1);
+  \draw[arr] (rnd) -| node[pos=0.25, above]{$r_n$} (s1);
   \draw[arr] (rnd) -- (cor);
-  \draw[arr] (cor) -- node[right]{$n'_n$} (s1);
-  \draw[arr] (s1) -- node[above]{$d_n$} node[below left, pos=0.85]{\scriptsize $+$} (s2);
-  \draw[arr] (rnd.south) |- node[pos=0.3, left]{$x_n = r_n$} (af.west);
-  \draw[arr] (af.east) -| node[pos=0.7, left]{$y_n \approx n'_n$} node[pos=0.93, right]{\scriptsize $-$} (s2);
-  \draw[arr] (s2) -- node[above]{$e_n$} (dac);
+  \draw[arr] (cor) -- node[above]{$x_n$} (af);
+  \draw[arr] (s1) -- node[above]{$d_n$} node[below, pos=0.93]{\scriptsize $+$} (s2);
+  \draw[arr] (af) -| node[pos=0.7, left]{$y_n$} node[pos=0.93, right]{\scriptsize $-$} (s2);
+  \draw[arr] (s2) -- node[above, pos=0.6]{$e_n$} (dac);
   \draw[arr] (dac) -- (osc);
-  \draw[arr, dashed] (10.9,0) |- ($(af.south)+(0,-0.45)$) -- (af.south);
-  \node[draw, dashed, gray, fit=(adc)(dc)(s2)(dac)(rnd)(af), inner sep=9pt,
-        label={[gray]below right:FRDM-MCXN947}] {};
+  \fill (fb) circle (1.5pt);
+  \draw[arr, dashed] (fb) |- ($(af.south)+(0,-0.45)$) -- (af.south);
+  \node[draw, dashed, gray, fit=(adc)(dac)(rnd)(cor)(af)(fbb), inner sep=9pt] (chip) {};
+  \node[gray, anchor=north east] at (chip.south east) {MCXN947};
 \end{tikzpicture}
-\caption{Cancelador implementado. El ruido $r_n$ se genera adentro de la placa, pasa por el
-correlador y se suma a la senoidal; el filtro adaptativo recibe $r_n$ como referencia. Por el
-DAC se puede sacar $d$, $e$, $y$, $s$ o el residuo $e-s$.}
+\caption{Cancelador implementado, con la topología por defecto (figura 2 de la consigna: el
+correlador en la rama de la referencia). Todo el procesamiento corre en el core0 y el ruido
+$r_n$ se genera adentro de la placa. Por defecto el DAC0 saca $e$ y el DAC1 saca $d$; en cada
+DAC se puede elegir $d$, $e$, $y$, $s$, el residuo $4(e-s)$ o la referencia $x$.}
 \label{fig:p2diag}
 \end{figure}
 
-El CTIMER0 marca $f_s = 8$~kHz y en cada período dispara una conversión del ADC. Toda la
-cadena de la figura~\ref{fig:p2diag} corre en la interrupción del ADC, muestra a muestra:
+El CTIMER0 conmuta la salida MAT3 a 16~kHz; la cuadrada de 8~kHz que resulta dispara, a través
+del INPUTMUX, una conversión del ADC0 por hardware en cada flanco ascendente, así que
+$f_s = 8$~kHz no depende del software. Toda la cadena de la figura~\ref{fig:p2diag} corre en la
+interrupción de fin de conversión del ADC (prioridad 0), muestra a muestra:
 \begin{enumerate}
   \item se convierte la lectura a volts y se resta la continua: $s_n$;
-  \item se genera $r_n$, ruido blanco gaussiano de desvío $\sigma_r = 0{,}2$~V, y se filtra con el correlador: $n'_n = C\{r\}_n$;
-  \item $d_n = s_n + n'_n$, y el LMS con referencia $x_n = r_n$ da $y_n$ y $e_n = d_n - y_n$;
-  \item la señal elegida se escribe en el DAC.
+  \item se genera $r_n$, ruido blanco gaussiano de desvío $\sigma_r = 0{,}25$~V, y se filtra con
+  el correlador: $C\{r\}_n$;
+  \item se arman $d_n$ y la referencia $x_n$ según la topología, se pasan a Q15 dividiendo por
+  1,65~V, y \lmsq{} da $y_n$ y $e_n$;
+  \item las señales elegidas se escriben en DAC0 y DAC1;
+  \item se acumulan las potencias del bloque de 100 muestras.
 \end{enumerate}
 
-El correlador es $c_k = \sqrt{1-0{,}7^2}\cdot 0{,}7^k$, $k = 0\dots7$:
-\[\mathbf{c} = [0{,}7141;\ 0{,}4999;\ 0{,}3499;\ 0{,}2450;\ 0{,}1715;\ 0{,}1200;\ 0{,}0840;\ 0{,}0588]\]
-(energía $\sum c_k^2 = 0{,}997 \approx 1$, así que el ruido mantiene su potencia:
-$P_{n'} \approx P_r = \sigma_r^2 = 0{,}04$~V$^2$). Como $r_n$ es
-blanco, $\mathbf{R} = P_r\mathbf{I}$ y $\mathbf{P} = E[d_n\mathbf{X}_n] = P_r\,\mathbf{c}$, de modo que
-el filtro óptimo es exactamente $\mathbf{W}^* = \mathbf{c}$: el procesador tiene que
-\emph{copiar} al correlador. Con eso $y = n'$ y $e = s$.
+El correlador es $c_k = \sqrt{1-0{,}7^2}\cdot 0{,}7^k$, $k = 0\dots9$:
+\[\mathbf{c} = [0{,}7141;\ 0{,}4999;\ 0{,}3499;\ 0{,}2450;\ 0{,}1715;\ 0{,}1200;\ 0{,}0840;\ 0{,}0588;\ 0{,}0412;\ 0{,}0288]\]
+(energía $\sum c_k^2 = 0{,}999 \approx 1$, así que el ruido filtrado mantiene la potencia
+$\sigma_r^2 = 0{,}0625$~V$^2$). Es la respuesta de $0{,}714/(1-0{,}7z^{-1})$ recortada a
+10 muestras: sus ceros están en $|z| = 0{,}7$, así que es de fase mínima y su inversa es estable.
+Hay dos topologías (comando \texttt{Q}):
+\begin{itemize}
+  \item \textbf{Figura 2 de la consigna} (\texttt{Q1}, por defecto): $d = s + r$ y la
+  referencia es $x = C\{r\}$. El filtro tiene que deshacer el correlador: el óptimo es
+  $\mathbf{W}^* = C^{-1}$. Como $C^{-1}(z) \approx (1-0{,}7z^{-1})/0{,}714$, el óptimo de Wiener
+  de 10 coeficientes (resuelto aparte con $\mathbf{R}\mathbf{W} = \mathbf{P}$ y guardado como
+  constante) es
+  $\mathbf{W}^* = [1{,}3995;\ -0{,}9795;\ \approx 0;\ \dots;\ \approx 0;\ 0{,}0142]$. Por recortar
+  $C^{-1}$ a 10 coeficientes queda un residuo mínimo de $6\times10^{-4}\,\sigma_r^2$, es decir, a
+  lo sumo unos 32~dB de reducción.
+  \item \textbf{Cancelador clásico} (\texttt{Q0}): $d = s + C\{r\}$ y la referencia es $x = r$.
+  Como $r$ es blanco, $\mathbf{R} = \sigma_r^2\mathbf{I}$ y $\mathbf{P} = \sigma_r^2\mathbf{c}$:
+  el óptimo es $\mathbf{W}^* = \mathbf{c}$ y el procesador tiene que \emph{copiar} al correlador.
+\end{itemize}
 
-Como el ruido se genera en la placa, también se conoce $s_n$ limpia, y se puede medir cuánto
-ruido queda a la salida: el residuo $e_n - s_n$. Cada 100 muestras se envía
-una línea \texttt{P2M} con la potencia del ruido, la del residuo, la reducción en dB, $\|\mathbf{W}^*-\mathbf{w}\|^2$ y las SNR de entrada y salida. Se usa
-$\|\mathbf{W}^*-\mathbf{w}\|^2$ como medida de convergencia al óptimo. SW2 pone los
-coeficientes en cero y genera un pulso en TRIG, para disparar el osciloscopio justo cuando el
-filtro empieza a aprender.
-
-\paragraph{Ubicación del correlador.} La figura 2 de la consigna dibuja el correlador en la rama
-de la referencia: $d = s + r$ y $x' = C\{r\}$. En ese caso el óptimo es $\mathbf{W}^* = C^{-1}$,
-que existe y es estable sólo si $C(z)$ es de fase mínima. Se eligió un correlador de fase
-mínima, casi igual a $0{,}714/(1-0{,}7z^{-1})$, de modo que
-$C^{-1}(z) \approx (1-0{,}7z^{-1})/0{,}714$: un FIR de dos coeficientes, $[1{,}400;\ -0{,}980]$.
-Las dos variantes están implementadas (comando \texttt{Q0} / \texttt{Q1}); por defecto se usa
-la del correlador en el camino del ruido, que es la del cancelador de interferencia de la teoría.
+Como el ruido se genera en la placa, también se conoce $s_n$ sin ruido, y se puede medir cuánto
+ruido queda a la salida: el residuo $e_n - s_n$. Cada 100 muestras (80 veces por segundo) se envía
+una línea \texttt{P2M,n,p\_ruido,p\_residuo,p\_senal,error\_coef} con la potencia del ruido
+sumado, la del residuo, la de la señal y $\|\mathbf{W}^*-\mathbf{w}\|^2$, que mide la
+convergencia al óptimo. MATLAB calcula la reducción de ruido como
+$10\log_{10}(P_{ruido}/P_{residuo})$. SW2 (o \texttt{Z}) pone los coeficientes en cero y genera un
+pulso de 1~ms en TRIG, para disparar el osciloscopio justo cuando el filtro empieza a aprender;
+\texttt{Z<n>} además graba $d$, $e$, $y$, $s$ y $x$ durante $n$ muestras desde ese momento.
 
 \subsection{Interfaz}
 \begin{table}[H]
 \centering
 \caption{Teclas y comandos (letra + valor + Enter, desde cualquier terminal o MATLAB).}
+\small
 \begin{tabular}{lp{11cm}}
 \toprule
-SW3 largo / \texttt{1}, \texttt{2} & Cambia entre Parte 1 (LED verde) y Parte 2 (LED rojo). \\
-SW2 & P1: arranca (o corta) un experimento. P2: reinicia los coeficientes + pulso en TRIG. \\
-SW3 corto & P1: siguiente $\mu$ de la lista. P2: cambia la señal del DAC ($d$, $e$, $y$, $s$, residuo). \\
-\texttt{U<mu>}, \texttt{G<0|1|2>} & Paso de adaptación; algoritmo (clase, \texttt{arm\_lms\_f32}, NLMS). \\
-\texttt{A<amp>} & P1: amplitud de la entrada. P2: desvío $\sigma_r$ del AWGN. \\
-\texttt{E<0|1>}, \texttt{V<sv>}, \texttt{S}, \texttt{B} & P1: entrada aleatoria/constante, ruido de medición, arrancar, barrido de $\mu$. \\
-\texttt{Q}, \texttt{O}, \texttt{Z}, \texttt{C}, \texttt{T}, \texttt{F} & P2: topología, salida del DAC, reinicio, coeficientes, tiempos, $f_s$. \\
+SW3 / \texttt{1}, \texttt{2} & Cambia entre Parte 1 (LED verde) y Parte 2 (LED rojo). El LED azul parpadea con cada bloque enviado. \\
+SW2 & P1: arranca un experimento. P2: reinicia los coeficientes + pulso en TRIG. \\
+\texttt{U<mu>} & $\mu$ de \lmsq{} ($0 < \mu < 1$). En la Parte 2 lo cambia sin borrar lo aprendido. \\
+\texttt{A<x>} & P1: amplitud de la entrada ($0 < A \le 1$). P2: desvío $\sigma_r$ del AWGN, en volts. \\
+\texttt{E}, \texttt{V}, \texttt{N}, \texttt{R}, \texttt{D} & P1: entrada aleatoria/constante, ruido de medición, muestras, semilla, enviar diferencias. \\
+\texttt{S}, \texttt{B}, \texttt{X} & P1: arrancar, barrido de $\mu$, cortar (la \texttt{X} la atiende el core1 al instante). \\
+\texttt{Q<0|1>} & P2: topología (correlador en el ruido / en la referencia). \\
+\texttt{O<n>}, \texttt{P<n>} & P2: señal del DAC0 / DAC1 (0 $d$, 1 $e$, 2 $y$, 3 $s$, 4 residuo, 5 referencia). \\
+\texttt{Z[n]}, \texttt{K<n>} & P2: reiniciar (y capturar $n$ muestras), capturar $n$ muestras. \\
+\texttt{C}, \texttt{T}, \texttt{M<k>} & P2: coeficientes, tiempos de cómputo, mandar 1 de cada $k$ bloques. \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 % ===========================================================================
 \section{Resultados de la Parte 1}
-Las figuras de esta sección se generaron corriendo en la PC el mismo código del firmware
-(\texttt{p1\_sim}), con la misma CMSIS-DSP. En la placa se repiten con
-\texttt{tp4\_experimentos.m}, que manda los mismos comandos y produce las mismas figuras
-(sección~\ref{sec:placa1}).
+Todos los experimentos se corrieron en la placa con \archivo{tp4_experimentos.m}, que manda los
+comandos por el puerto serie, guarda las líneas que devuelve el core1 y arma las figuras.
 
-\subsection{Influencia de $\mu$ con entrada aleatoria}
-Con $A = 1$, $P_x = 1/3$ y la cota (\ref{eq:mumax}) da $\mu_{max} = 2/(8\cdot1/3) = 0{,}75$.
-Como la entrada es blanca, $\mathbf{R} = P_x\mathbf{I}$: los 8 autovalores son iguales y
-(\ref{eq:tau}) da $\tau_{mse} = 1/(2\mu P_x) = 1{,}5/\mu$ muestras.
+\subsection{Influencia de \texorpdfstring{$\mu$}{\textmu} con entrada aleatoria}
+Con $A = 1$, $P_x = 1/3$ y la cota (\ref{eq:mumax}) da $\mu_{max} = 2/(10\cdot1/3) = 0{,}6$.
+Como la entrada es blanca, $\mathbf{R} = P_x\mathbf{I}$: los 10 autovalores son iguales y
+(\ref{eq:tau}) da $\tau_{mse} = 1/(2\mu P_x) = 1{,}5/\mu$ muestras. El MSE inicial, con los
+coeficientes en cero, es $P_x\sum p_k^2 = 0{,}052$ ($-12{,}8$~dB).
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.9\linewidth]{p1_e1_mse.pdf}
-\caption{Curva de aprendizaje (MSE promediado cada 100 muestras) para distintos $\mu$.}
+\includegraphics[width=\linewidth]{p1_curva_aprendizaje.png}
+\caption{Curva de aprendizaje medida en la placa (MSE promediado cada 100 muestras) para los
+seis $\mu$ del barrido. La leyenda muestra el $\mu$ ya cuantizado a Q15.}
 \label{fig:e1mse}
 \end{figure}
 
+\begin{table}[H]
+\centering
+\caption{Entrada aleatoria, $A = 1$: constante de tiempo, sesgo (\ref{eq:sesgo}) y piso de
+cuantización (\ref{eq:piso}) teóricos, frente al piso medido (leído de la
+figura~\ref{fig:e1mse}, promedio de los últimos bloques).}
+\label{tab:e1}
+\small
+\begin{tabular}{ccccccc}
+\toprule
+$\mu$ (\texttt{U}) & $\mu$ en Q15 & $\tau$ (muestras) & $\delta$ teórico & Piso teórico & Piso medido & Estado \\
+\midrule
+0,002 & 0,0020142 & 745 & 0,0227 & $-27{,}6$ dB & $\approx -28$ dB & OK \\
+0,01  & 0,0100098 & 150 & 0,0046 & $-41{,}6$ dB & $\approx -43$ dB & OK \\
+0,05  & 0,0499878 & 30  & 0,0009 & $-55{,}5$ dB & $\approx -57$ dB & OK \\
+0,2   & 0,2000122 & 7,5 & 0,0002 & $-67{,}6$ dB & $\approx -67$ dB & OK \\
+0,5   & 0,5       & 3   & --     & --           & $-55$ a $-73$ dB & OK (errático) \\
+0,7   & 0,7000122 & --  & --     & --           & --             & diverge \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \begin{itemize}
-  \item La pendiente de la curva en dB es $-10\log_{10}(e)/\tau \approx -4{,}34/\tau$ dB por
-  muestra. Para $\mu = 0{,}01$ ($\tau = 150$) se esperan 29~dB cada 1000 muestras, y la curva
-  baja de $-6$ a $-60$~dB en las primeras 2000: coincide. Con $\mu = 0{,}002$ ($\tau = 750$)
-  a las 5000 muestras todavía está bajando.
-  \item Sin ruido de medición $\xi_{min} = 0$, así que el MSE baja hasta el piso de la aritmética
-  de punto flotante de simple precisión ($-120$ a $-135$~dB) y los coeficientes llegan
-  exactamente a los de la planta (figura~\ref{fig:e1coef}).
-  \item Hasta $\mu \approx 0{,}2$, aumentar $\mu$ acelera el aprendizaje. Más cerca del
-  límite ($\mu = 0{,}6$) el proceso se vuelve errático y más \emph{lento}, y con
-  $\mu = 0{,}8 > \mu_{max}$ diverge. La cota $2/\mathrm{tr}(\mathbf{R})$ resultó ajustada:
-  para el LMS (no para máxima pendiente, que con autovalores iguales admitiría hasta
-  $2/P_x = 6$) el límite real de estabilidad en media cuadrática está cerca de
-  $2/\mathrm{tr}(\mathbf{R})$, porque el ruido del gradiente crece con $\mu\,\mathrm{tr}(\mathbf{R})$.
+  \item Hasta $\mu = 0{,}2$, aumentar $\mu$ acelera el aprendizaje como predice
+  $\tau = 1{,}5/\mu$: con $\mu = 0{,}2$ ($\tau = 7{,}5$) el MSE llega al piso en las primeras 200
+  muestras; con $\mu = 0{,}05$ ($\tau = 30$), en unas 400; con $\mu = 0{,}01$ ($\tau = 150$), en
+  unas 1500.
+  \item El MSE no baja a cero como en punto flotante (donde, sin ruido de medición, llegaría
+  al piso de la aritmética de simple precisión, cerca de $-130$~dB). Queda en un \textbf{piso de
+  cuantización} que \textbf{baja al aumentar $\mu$}: $-28$, $-43$, $-57$ y $-67$~dB. Coincide
+  dentro de 1 o 2~dB con (\ref{eq:piso}) y baja unos 20~dB por década de $\mu$
+  (tabla~\ref{tab:e1}).
+  \item Con $\mu = 0{,}002$ la curva se aplana en $-28$~dB. No es falta de tiempo: 5000 muestras
+  son $6{,}7\tau$, y en punto flotante el MSE habría llegado a unos $-42$~dB. Es el sesgo del
+  truncamiento, que se ve directamente en los coeficientes (figura~\ref{fig:e1coef}).
+  \item Con $\mu = 0{,}5$, cerca del límite, el proceso se vuelve errático: oscila entre $-55$ y
+  $-73$~dB, con saltos como el de $n \approx 2900$ ($-43$~dB), y no mejora a $\mu = 0{,}2$.
+  \item Con $\mu = 0{,}7 > \mu_{max} = 0{,}6$ el filtro diverge enseguida: los coeficientes se
+  clavan en la saturación de Q15 y el firmware corta la corrida con estado \texttt{DIVERGE} (por
+  eso su curva no aparece en la escala de la figura). La cota $2/\mathrm{tr}(\mathbf{R})$ resultó
+  ajustada: con autovalores iguales, máxima pendiente admitiría hasta $2/P_x = 6$, pero en el LMS
+  el ruido del gradiente crece con $\mu\,\mathrm{tr}(\mathbf{R})$ y el límite real queda cerca de
+  $2/\mathrm{tr}(\mathbf{R})$.
 \end{itemize}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.9\linewidth]{p1_e1_diff.pdf}
-\caption{Diferencia entre los coeficientes de la planta y los del filtro, mostrada cada 100
-muestras ($\mu = 0{,}01$). Arriba, cada coeficiente; abajo, $|p_k - w_k|$ en escala de colores.}
-\label{fig:e1diff}
+\includegraphics[width=\linewidth]{p1_coeff_finales.png}
+\caption{Coeficientes aprendidos al final de cada corrida (5000 muestras), sobre la respuesta al
+impulso de la planta.}
+\label{fig:e1coef}
 \end{figure}
+
+Con $\mu \ge 0{,}05$ los coeficientes finales coinciden con los de la planta. Con
+$\mu = 0{,}002$ y $\mu = 0{,}01$ \textbf{todos} quedan por debajo de la planta en una cantidad casi
+constante, de unos 0,022 y 0,005 respectivamente. Es lo que predice (\ref{eq:sesgo}):
+$\delta = 0{,}0227$ y $0{,}0046$. Con ese sesgo, (\ref{eq:piso}) da justamente el piso medido de
+$-28$~dB para $\mu = 0{,}002$. El filtro identifica la planta, pero en Q15 con un $\mu$ chico el
+truncamiento le impone un error sistemático.
+
+La consigna pide además mostrar cada 100 muestras la diferencia entre los coeficientes de la
+planta y los del filtro. El firmware la manda en las líneas \texttt{P1D}:
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p1_e1_werr.pdf}
-  \caption{$\|\mathbf{p}-\mathbf{w}\|^2$.}
-\end{subfigure}
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p1_e1_coef.pdf}
-  \caption{Coeficientes finales.}
-  \label{fig:e1coef}
-\end{subfigure}
-\caption{Error de los coeficientes y coeficientes aprendidos con entrada aleatoria.}
+\figmedida{p1_e1_random_diff.png}{Diferencia planta - filtro cada 100 muestras (sección E1)}
+\caption{Diferencia $p_k - w_k$ de los 10 coeficientes, cada 100 muestras.}
+\label{fig:e1diff}
 \end{figure}
 
 \subsection{Entrada constante}
 Con $x_n = A$, $\mathbf{R} = A^2\mathbf{1}\mathbf{1}^T$ tiene un solo autovalor no nulo,
-$\lambda = LA^2 = \mathrm{tr}(\mathbf{R})$, con vector propio $\mathbf{1}$, y 7 autovalores
+$\lambda = LA^2 = \mathrm{tr}(\mathbf{R})$, con vector propio $\mathbf{1}$, y 9 autovalores
 nulos. El MSE sólo ``ve'' la componente de $\mathbf{w}$ en la dirección de $\mathbf{1}$, es
 decir, la suma de los coeficientes (la ganancia en continua). En consecuencia:
 \begin{itemize}
-  \item El MSE converge a cero muy rápido ($\tau = 1/(2\mu L A^2)$, pocas decenas de muestras), pero
-  sólo porque $\sum w_k = \sum p_k$ (la ganancia de continua): figura~\ref{fig:e2coef}.
-  \item Los coeficientes \textbf{no} se identifican: $\|\mathbf{p}-\mathbf{w}\|^2$ queda cerca
-  de $\|\mathbf{p}\|^2$. Los modos con $\lambda = 0$ no se adaptan nunca. Es la
-  ``solución parcial por falta de excitación apropiada'' de la teoría. (Los primeros
-  coeficientes se mueven un poco porque al arrancar la línea de retardo se llena desde cero,
-  lo que equivale a un escalón con algo de excitación.)
-  \item La cota de estabilidad es la misma fórmula, $\mu < 2/(LA^2) = 0{,}25$: con
-  $\mu = 0{,}24$ converge y con $\mu = 0{,}26$ diverge. La entrada constante tiene el triple de potencia que la aleatoria de la
-  misma amplitud, y por eso diverge con un $\mu$ tres veces menor.
+  \item El MSE debería converger muy rápido ($\tau = 1/(2\mu LA^2) = 1/(20\mu)$ con $A = 1$: 25
+  muestras con $\mu = 0{,}002$), pero sólo porque $\sum w_k$ llega a $\sum p_k = 0{,}427$.
+  \item Los coeficientes \textbf{no} se identifican: $\|\mathbf{p}-\mathbf{w}\|^2$ queda cerca de
+  $\|\mathbf{p}\|^2 = 0{,}157$, porque los modos con $\lambda = 0$ no se adaptan nunca. Es la
+  ``solución parcial por falta de excitación apropiada'' de la teoría. Los primeros coeficientes
+  se mueven un poco porque al arrancar la línea de retardo se llena desde cero, lo que equivale a
+  un escalón con algo de excitación.
+  \item La cota de estabilidad es la misma fórmula, $\mu < 2/(LA^2) = 0{,}2$: la entrada constante
+  tiene el triple de potencia que la aleatoria de la misma amplitud y por eso el límite es tres
+  veces menor. El $\mu = 0{,}2$ del barrido queda justo en el borde (en Q15 vale 0,20001, y
+  $|1-\mu\lambda| = 1{,}0001$): el error no decrece. Con 0,5 y 0,7 diverge.
 \end{itemize}
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p1_e2_mse.pdf}
+\begin{subfigure}{0.49\linewidth}\centering
+  \figmedida[0.95\linewidth]{p1_e2_const_mse.png}{Curva de aprendizaje, entrada constante (E2)}
+  \caption{Curva de aprendizaje.}
 \end{subfigure}
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p1_e2_werr.pdf}
+\begin{subfigure}{0.49\linewidth}\centering
+  \figmedida[0.95\linewidth]{p1_e2_const_coef.png}{Coeficientes finales, entrada constante (E2)}
+  \caption{Coeficientes finales.}
 \end{subfigure}
-\caption{Entrada constante: el MSE llega al piso numérico pero el error de los coeficientes no baja.}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.85\linewidth]{p1_e2_coef.pdf}
-\caption{Con entrada constante el filtro aprende una respuesta distinta de la planta pero con la
-misma ganancia de continua.}
-\label{fig:e2coef}
+\caption{Entrada constante, $A = 1$: el MSE baja pero los coeficientes no se parecen a los de la
+planta; sólo se ajusta su suma.}
+\label{fig:e2}
 \end{figure}
 
 \subsection{Influencia de la potencia de entrada}
-Con el LMS, $\mu_{max}$ y $\tau$ dependen de $P_x$: con $\mu = 0{,}05$ fijo, duplicar la amplitud
-multiplica $P_x$ por 4, divide $\tau$ por 4 (más rápido) y divide $\mu_{max}$ por 4. Con
-$A = 5$, $\mu_{max} = 0{,}03 < 0{,}05$ y el filtro diverge. Con el NLMS ($\mu = 0{,}1$),
-$\tau = L/(2\mu) = 40$ muestras para cualquier amplitud. El NLMS normaliza el paso con la
-energía de la entrada: las cuatro curvas son prácticamente iguales
-(figura~\ref{fig:e3}). El piso numérico sube con $A$ porque crece la escala de las señales.
+Con el LMS, $\mu_{max}$ y $\tau$ dependen de $P_x$: duplicar la amplitud multiplica $P_x$ por 4,
+divide $\tau$ por 4 (más rápido) y divide $\mu_{max}$ por 4. En Q15 la amplitud no puede pasar de 1,
+así que el experimento se hizo hacia abajo: $\mu = 0{,}05$ fijo y $A = 1$; 0,5; 0,25 y 0,125. En
+punto fijo achicar la potencia tiene un segundo efecto: según (\ref{eq:piso}) el piso de
+cuantización sube como $1/P_x$, 6~dB cada vez que se divide la amplitud por 2.
+
+\begin{table}[H]
+\centering
+\caption{Entrada aleatoria con $\mu = 0{,}05$ y distintas amplitudes: valores teóricos.}
+\label{tab:e3}
+\small
+\begin{tabular}{cccccc}
+\toprule
+$A$ & $P_x$ & $\mu_{max}$ & $\tau$ (muestras) & MSE inicial & Piso teórico (\ref{eq:piso}) \\
+\midrule
+1     & 0,333  & 0,6  & 30   & $-12{,}8$ dB & $-55{,}5$ dB \\
+0,5   & 0,083  & 2,4  & 120  & $-18{,}8$ dB & $-49{,}5$ dB \\
+0,25  & 0,021  & 9,6  & 480  & $-24{,}9$ dB & $-43{,}5$ dB \\
+0,125 & 0,0052 & 38   & 1920 & $-30{,}9$ dB & $-37{,}5$ dB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Con poca potencia el filtro aprende más lento y llega a un piso más alto: con $A = 0{,}125$ el
+MSE apenas puede bajar 7~dB y, con $\tau = 1920$, en 5000 muestras ni siquiera llega a ese piso.
+Como $\mu < 1$ en Q15, con $A \le 1$ sólo puede diverger con entrada de amplitud 1. La solución
+clásica a la dependencia con la potencia es el LMS normalizado, que divide el paso por la
+energía de la entrada en la ventana del filtro; no se implementó porque la cátedra pidió usar
+\lmsq.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\linewidth]{p1_e3_potencia.pdf}
-\caption{Misma planta y mismo $\mu$ con distintas amplitudes de entrada: LMS (izquierda) y NLMS (derecha).}
+\figmedida{p1_e3_potencia_mse.png}{Curvas de aprendizaje con distintas amplitudes (E3)}
+\caption{Mismo $\mu = 0{,}05$ con distintas amplitudes de entrada.}
 \label{fig:e3}
 \end{figure}
 
-\subsection{Ruido de medición y desajuste}
-Si a la salida de la planta se suma un ruido $v_n$ de varianza $\sigma_v^2$ (comando
-\texttt{V}), $\xi_{min} = \sigma_v^2$ y el MSE en régimen es $\sigma_v^2(1+M)$. Con
-$\sigma_v = 0{,}01$ ($-40$~dB) aparece el compromiso típico: un $\mu$ más grande converge más
-rápido pero deja más ruido de gradiente. Los valores medidos en las últimas 2000 muestras siguen
-a (\ref{eq:M}) (tabla~\ref{tab:desajuste}); el pequeño exceso es la variabilidad de estimar una
-potencia con bloques de 100 muestras.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.85\linewidth]{p1_e5_mse.pdf}
-\caption{Curvas de aprendizaje con ruido de medición $\sigma_v = 0{,}01$.}
-\end{figure}
-
-\begin{table}[H]
-\centering
-\caption{Desajuste con $\sigma_v = 0{,}01$, entrada aleatoria $A = 1$ (simulación).}
-\label{tab:desajuste}
-\TablaDesajusteSim
-\end{table}
-
-\subsection{Comparación de implementaciones}
-La rutina de la clase y \texttt{arm\_lms\_f32} dan curvas idénticas bit a bit en la simulación
-(hacen las mismas operaciones en el mismo orden). El LMS se corrió con $\mu = 0{,}05$, y el
-NLMS con $\mu = 0{,}1$, que equivale a un LMS con $\mu = 0{,}1/(LP_x) = 0{,}0375$. En la placa se mide el costo de cada una (tabla~\ref{tab:ciclos}).
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.8\linewidth]{p1_e4_alg.pdf}
-\caption{Las tres implementaciones con la misma entrada.}
-\end{figure}
-
-\begin{table}[H]
-\centering
-\caption{Resumen de las corridas de la Parte 1 (simulación). $\tau$ en muestras.}\label{tab:p1sim}
-\small
-\TablaPunoSim
-\end{table}
-
-\subsection{Resultados en la placa}\label{sec:placa1}
-Los experimentos se repitieron en la FRDM-MCXN947 con el script \texttt{tp4\_experimentos.m}
-($N = 5000$ muestras, MSE promediado cada 100 muestras, semilla 1). La
-tabla~\ref{tab:placa_p1} resume el MSE del último bloque de cada corrida.
-
-\begin{table}[H]
-\centering
-\caption{Resultados medidos en la placa (MSE del último bloque de 100 muestras).}
-\label{tab:placa_p1}
-\footnotesize\setlength{\tabcolsep}{4pt}
-\begin{tabular}{llccccl}
-\toprule
-Exp. & Entrada & $A$ & $\mu$ & $\mu_{\max}$ & MSE final & Estado \\
-\midrule
-E1 & aleatoria & 1 & 0,002 & 0,75 & $3{,}2\times10^{-4}$ & OK (sin terminar) \\
-   &           & 1 & 0,01  & 0,75 & $1{,}3\times10^{-12}$ & OK \\
-   &           & 1 & 0,05  & 0,75 & $2{,}7\times10^{-14}$ & OK \\
-   &           & 1 & 0,2   & 0,75 & $3{,}1\times10^{-15}$ & OK \\
-   &           & 1 & 0,6   & 0,75 & $7{,}3\times10^{-14}$ & OK \\
-   &           & 1 & 0,8   & 0,75 & $1{,}9\times10^{11}$  & diverge \\
-\midrule
-E2 & constante & 1 & 0,002 & 0,25 & $3{,}2\times10^{-12}$ & OK \\
-   &           & 1 & 0,01  & 0,25 & $5{,}7\times10^{-14}$ & OK \\
-   &           & 1 & 0,05  & 0,25 & 0                     & OK \\
-   &           & 1 & 0,2   & 0,25 & $5{,}7\times10^{-14}$ & OK \\
-   &           & 1 & 0,6 / 0,8 & 0,25 & NaN (desborde)    & diverge \\
-\midrule
-E3 LMS & aleatoria & 0,5 / 1 / 2 & 0,05 & 3 / 0,75 / 0,19 & $\le 2\times10^{-13}$ & OK \\
-       &           & 5           & 0,05 & 0,03            & $2{,}2\times10^{19}$  & diverge \\
-E3 NLMS & aleatoria & 0,5 / 1 / 2 / 5 & 0,1 & 2 & $\le 1{,}5\times10^{-12}$ & OK \\
-\midrule
-E5$^\dagger$ & aleatoria & 1 & 0,002 & 0,75 & $4{,}28\times10^{-4}$ & OK (sin terminar) \\
-   &           & 1 & 0,01  & 0,75 & $1{,}005\times10^{-4}$ & OK \\
-   &           & 1 & 0,05  & 0,75 & $1{,}079\times10^{-4}$ & OK \\
-   &           & 1 & 0,2   & 0,75 & $1{,}392\times10^{-4}$ & OK \\
-   &           & 1 & 0,6   & 0,75 & $1{,}337\times10^{-3}$ & OK \\
-   &           & 1 & 0,8   & 0,75 & $2{,}6\times10^{11}$   & diverge \\
-\bottomrule
-\end{tabular}\\[2pt]
-$^\dagger$ con ruido de medición $\sigma_v = 0{,}01$.
-\end{table}
-
-Los resultados coinciden con la teoría y, prácticamente cifra por cifra, con la simulación
-(tabla~\ref{tab:p1sim}), porque la placa y la PC corren el mismo código con la misma semilla:
-\begin{itemize}
-\item Con entrada aleatoria ($A = 1$, $P_x = 1/3$) el filtro converge para todo
-  $\mu < 0{,}75$ y diverge con $\mu = 0{,}8$, apenas por encima del límite $2/(LP_x)$. La
-  velocidad crece con $\mu$ hasta $\mu \approx 0{,}2$; con $\mu = 0{,}6$, cerca del borde, la
-  curva es más ruidosa y más lenta (figura~\ref{fig:placa_e1}). Con $\mu = 0{,}002$
-  ($\tau = 750$) a las 5000 muestras todavía está bajando. La diferencia $p_k - w_k$ tiende a
-  cero en los 8 coeficientes (figura~\ref{fig:placa_e1diff}).
-\item Con entrada constante el límite cae a $2/(LA^2) = 0{,}25$: ya diverge con $\mu = 0{,}6$,
-  que con entrada aleatoria convergía. El MSE llega a cero, pero los coeficientes no se
-  parecen a los de la planta (figura~\ref{fig:placa_e2}): sólo se aprende la suma
-  $\sum w_k = \sum p_k \approx 1$, porque $\mathbf{R} = A^2\mathbf{1}\mathbf{1}^T$ tiene un único
-  autovalor no nulo.
-\item Con LMS ($\mu = 0{,}05$ fijo), multiplicar la amplitud de la entrada por 2 divide por 4 la
-  constante de tiempo (120, 30 y 7,5 muestras para $A = 0{,}5$, 1 y 2) y también el $\mu$
-  máximo: con $A = 5$, $\mu_{\max} = 0{,}03 < 0{,}05$ y el filtro diverge. Con NLMS
-  ($\mu = 0{,}1$) converge igual para las cuatro amplitudes ($\tau = 40$ muestras).
-\item Con ruido de medición de potencia $\xi_{\min} = \sigma_v^2 = 10^{-4}$, el MSE final ya no
-  llega a cero sino a $\xi_{\min}(1 + M)$, con $M = \frac{\mu\,\mathrm{tr}R/2}{1-\mu\,\mathrm{tr}R/2}$
-  y $\mathrm{tr}R = 8/3$: la teoría da $1{,}014$, $1{,}071$ y $1{,}364\times10^{-4}$ para
-  $\mu = 0{,}01$, 0,05 y 0,2, y se midió $1{,}005$, $1{,}079$ y $1{,}392\times10^{-4}$. Cerca
-  del límite ($\mu = 0{,}6$) la aproximación deja de valer y el exceso es mucho mayor
-  (figura~\ref{fig:placa_e5}).
-\end{itemize}
-
-\begin{figure}[H]
-\centering
-\figplaca{p1_e1_random_mse.png}{Curva de aprendizaje medida (tp4\_experimentos.m, sección E1)}
-\caption{Curva de aprendizaje medida en la FRDM-MCXN947, entrada aleatoria.}
-\label{fig:placa_e1}
-\end{figure}
-\begin{figure}[H]
-\centering
-\figplaca{p1_e1_random_diff.png}{Diferencia planta - filtro (sección E1)}
-\caption{Diferencia entre los coeficientes de la planta y los del filtro, medida cada 100
-muestras ($\mu = 0{,}01$).}
-\label{fig:placa_e1diff}
-\end{figure}
-\begin{figure}[H]
-\centering
-\figplaca{p1_e2_const_coef.png}{Coeficientes con entrada constante (sección E2)}
-\caption{Coeficientes finales medidos con entrada constante: sólo se ajusta su suma.}
-\label{fig:placa_e2}
-\end{figure}
-\begin{figure}[H]
-\centering
-\figplaca{p1_e5_ruido_mse.png}{Curva de aprendizaje con ruido de medición (sección E5)}
-\caption{Curva de aprendizaje con ruido de medición $\sigma_v = 0{,}01$: el piso queda en
-$\xi_{min} = -40$~dB y sube con $\mu$ (desajuste).}
-\label{fig:placa_e5}
-\end{figure}
-\begin{figure}[H]
-\centering
-\figplaca{terminal_p1.png}{Captura de la terminal con las líneas P1M / P1D / P1F}
-\caption{Programa corriendo: final de una corrida por el puerto serie, con las líneas
-\texttt{P1D}, \texttt{P1M}, los coeficientes aprendidos (\texttt{P1W}) y el resumen \texttt{P1F}.}
-\end{figure}
-
-\begin{table}[H]
-\centering
-\caption{Ciclos de CPU por muestra del filtro adaptativo ($L = 8$, 150~MHz), medidos con
-el contador DWT en la sección E4.}
-\label{tab:ciclos}
-\begin{tabular}{lcc}
-\toprule
-Implementación & Ciclos/muestra & Tiempo ($\mu$s) \\
-\midrule
-LMS de clase (\texttt{lms\_clase\_step}) & 219 & 1,46 \\
-\texttt{arm\_lms\_f32} & 285 & 1,90 \\
-\texttt{arm\_lms\_norm\_f32} & 308 & 2,05 \\
-\bottomrule
-\end{tabular}
-\end{table}
-Las tres implementaciones convergen igual; la de clase y \texttt{arm\_lms\_f32} dan el mismo MSE
-($2{,}72\times10^{-14}$ con $\mu = 0{,}05$). La de clase es un 23\,\% más rápida porque las
-funciones de CMSIS están pensadas para bloques de muestras y, con \texttt{blockSize = 1}, pagan
-en cada muestra el costo de copiar el estado y de arrancar sus lazos, que con sólo 8
-coeficientes pesa más. La normalización de NLMS agrega 23 ciclos (la energía de la entrada se
-actualiza de forma recursiva y hay una división por muestra). A 8~kHz (125~$\mu$s por muestra)
-cualquiera de las tres ocupa menos del 2\,\% del tiempo disponible.
-
 % ===========================================================================
 \section{Resultados de la Parte 2}
-Simulación con una senoidal de 200~Hz y 1~Vpp, cuantizada a 16 bits, $f_s = 8$~kHz, AWGN de
-desvío $\sigma_r = 0{,}2$~V ($P_r = 0{,}04$~V$^2$; con $P_s = 0{,}125$~V$^2$, SNR de entrada
-$\approx 5$~dB). Para la referencia, $\mu_{max} = 2/(8\cdot0{,}04) = 6{,}25$ y
-$\tau = 1/(2\mu P_r)$.
+Condiciones: senoidal de 200~Hz y 2~Vpp ($P_s = 0{,}5$~V$^2$), AWGN de desvío
+$\sigma_r = 0{,}25$~V ($\sigma_r^2 = 0{,}0625$~V$^2$, SNR de entrada de 9~dB), $f_s = 8$~kHz,
+$\mu = 0{,}02$ (por defecto) y fondo de escala de 1,65~V. En unidades de Q15 la potencia del ruido
+es $(0{,}25/1{,}65)^2 = 0{,}023$. Con 2~Vpp la senoidal ocupa $\pm1$~V de los $\pm1{,}65$~V
+disponibles, y $d = s + r$ satura en Q15 sólo en los picos, cuando $|r| > 0{,}65$~V $= 2{,}6\,\sigma_r$
+(alrededor del 0,1\,\% de las muestras).
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.9\linewidth]{p2_ondas.pdf}
-\caption{Formas de onda (osciloscopio simulado) con $\mu = 0{,}01$: al arrancar la salida es
-igual a la entrada ruidosa; a los 3,5~s el cancelador recupera la senoidal.}
-\label{fig:ondas}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p2_e6_red.pdf}
-\end{subfigure}
-\begin{subfigure}{0.49\linewidth}
-  \includegraphics[width=\linewidth]{p2_e6_werr.pdf}
-\end{subfigure}
-\caption{Reducción de ruido y distancia al filtro óptimo $\mathbf{W}^* = \mathbf{c}$ para distintos $\mu$.}
-\label{fig:e6}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.8\linewidth]{p2_e6_coef.pdf}
-\caption{Coeficientes del cancelador después de 8,6~s ($\mu = 0{,}01$): convergen al correlador.}
-\label{fig:e6coef}
-\end{figure}
-
-\begin{itemize}
-  \item El procesador converge al filtro óptimo de Wiener: los coeficientes copian al
-  correlador (figura~\ref{fig:e6coef}) y $\|\mathbf{W}^*-\mathbf{w}\|^2$ cae entre 15 y 30~dB
-  (figura~\ref{fig:e6}).
-  \item Acá $\xi_{min} = P_s = 0{,}125$~V$^2$ no es cero: \textbf{la propia señal útil hace de
-  ruido para el algoritmo}, porque $e = s + (n'-y)$ y el LMS adapta con todo $e$. Por eso el
-  desajuste deja un ruido residual $\approx M\,P_s$ y aparece el compromiso velocidad--calidad:
-  con $\mu = 0{,}2$ converge en milisegundos pero la reducción ronda los 10~dB; con
-  $\mu = 0{,}002$ tarda varios segundos pero llega a 25--30~dB (tabla~\ref{tab:cancelador}).
-  En régimen el residuo es $J_{ex} \approx \tfrac{\mu}{2} L P_r P_s$, así que la reducción
-  teórica es $P_{n'}/J_{ex} = 0{,}0399/(0{,}02\,\mu)$: 30, 23, 16 y 10~dB para los cuatro $\mu$.
-  \item Con el correlador en la rama de la referencia (figura~\ref{fig:ref}) el filtro también
-  converge, a $C^{-1}$, pero mucho más lento. La referencia ahora es ruido coloreado, con
-  densidad espectral $P_r|C(e^{j\omega})|^2$ que va de $5{,}7P_r$ (en $\omega = 0$) a $0{,}18P_r$
-  (en $\omega=\pi$): la dispersión de autovalores $\lambda_{max}/\lambda_{min} \approx 32$ hace
-  que los modos lentos tarden hasta 32 veces más que los rápidos, que fijan el $\mu$ máximo.
-  Con 8 coeficientes el filtro llega a $[1{,}41;\ -0{,}94;\ \approx 0{,}04 \dots]$, cerca de
-  $C^{-1} \approx [1{,}40;\ -0{,}98;\ 0 \dots]$.
-\end{itemize}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=\linewidth]{p2_e7_ref.pdf}
-\caption{Correlador en la rama de la referencia (como en la figura 2 de la consigna).}
-\label{fig:ref}
-\end{figure}
+\subsection{Valores teóricos}
+Con \texttt{postShift = 1}, $\mu_{ef} = 2\mu$, la condición de convergencia es
+$\mu < 1/(L P_x)$ y las constantes de tiempo son $\tau_p = 1/(4\mu\lambda_p)$.
 
 \begin{table}[H]
 \centering
-\caption{Cancelador en régimen (simulación de 8,6~s; cociente de potencias de los últimos 2,5~s).}
-\label{tab:cancelador}
-\TablaCanceladorSim
-\end{table}
-
-\subsection{Resultados en la placa}
-Para ver la convergencia en el osciloscopio: CH1 en la salida del DAC (J1-4) con la señal $e$
-(comando \texttt{O1}), disparo externo en TRIG (J1-8), modo \emph{single}, y apretar SW2. Con
-$\mu = 0{,}002$ (comando \texttt{U0.002}, $\tau \approx 0{,}8$~s) se ve cómo la senoidal se va
-limpiando en uno o dos segundos, de acuerdo con la constante de tiempo esperada; con el valor por
-defecto, $\mu = 0{,}01$ ($\tau \approx 0{,}16$~s), la limpieza es casi inmediata. Esta prueba se
-muestra en vivo en la presentación. Con \texttt{O0} se ve la señal con ruido y con \texttt{O4} el residuo.
-
-\begin{figure}[H]
-\centering
-\begin{subfigure}{0.49\linewidth}\centering
-  \figplaca[0.95\linewidth]{osc_d.png}{DAC = d (señal + ruido)}
-  \caption{Entrada del cancelador, $d = s + n'$.}
-\end{subfigure}
-\begin{subfigure}{0.49\linewidth}\centering
-  \figplaca[0.95\linewidth]{osc_e.png}{DAC = e, ya convergido}
-  \caption{Salida del cancelador, $e \approx s$ (amplitud medida 0,97~Vpp).}
-\end{subfigure}
-\caption{Capturas del osciloscopio.}
-\end{figure}
-
-Las secciones E6 y E7 de \texttt{tp4\_experimentos.m} repiten en la placa los experimentos de
-la simulación, con la senoidal del generador (200~Hz, 1~Vpp) entrando por el ADC y el AWGN
-generado en el micro. Cada corrida dura unos 8,6~s desde el reinicio de los coeficientes
-(comando \texttt{Z}). La reducción en régimen se calcula igual que en la simulación, como
-cociente de las potencias del ruido y del residuo en los últimos 2,5~s (200 bloques).
-
-\begin{figure}[H]
-\centering
-\begin{subfigure}{0.49\linewidth}\centering
-  \figplaca[\linewidth]{p2_e6_mu_red.png}{Reducción de ruido medida (sección E6)}
-  \caption{Correlador en el camino del ruido (E6).}
-\end{subfigure}
-\begin{subfigure}{0.49\linewidth}\centering
-  \figplaca[\linewidth]{p2_e7_ref_red.png}{Reducción de ruido medida (sección E7)}
-  \caption{Correlador en la referencia (E7).}
-\end{subfigure}
-\caption{Reducción de ruido medida en la placa, cada 100 muestras.}
-\label{fig:placa_p2}
-\end{figure}
-
-\begin{table}[H]
-\centering
-\caption{Reducción de ruido en régimen: teoría, simulación y placa. SNR de entrada medida: 5,2~dB.}
-\label{tab:placa_p2}
+\caption{Las dos topologías con $\sigma_r = 0{,}25$~V ($P_x$ y $\lambda$ en unidades de Q15).}
+\label{tab:p2teo}
 \small
-\begin{tabular}{lrrrrr}
+\begin{tabular}{lll}
 \toprule
-Topología & $\mu$ & Teoría (dB) & Simulación (dB) & Placa (dB) & SNR salida placa (dB) \\
+ & Figura 2 (\texttt{Q1}, por defecto) & Clásico (\texttt{Q0}) \\
 \midrule
-ruido      & 0,002 & 30,0 & 25,0 & 31,2 & 36,4 \\
-ruido      & 0,01  & 23,0 & 23,7 & 23,5 & 28,7 \\
-ruido      & 0,05  & 16,0 & 16,7 & 17,4 & 22,6 \\
-ruido      & 0,2   & 10,0 & 10,1 & 10,2 & 15,4 \\
-referencia & 0,01  & --   & 16,6 & 15,8 & 20,9 \\
-referencia & 0,05  & --   &  9,7 &  9,7 & 14,8 \\
+Ruido sumado a $s$ & $r$ & $C\{r\}$ \\
+Referencia $x$ & $C\{r\}$ (coloreada) & $r$ (blanca) \\
+Óptimo $\mathbf{W}^*$ & $C^{-1}$ recortado a 10 coef. & $\mathbf{c}$ \\
+Autovalores de $\mathbf{R}$ & de 0,0041 a 0,097 (dispersión 23) & todos iguales a 0,023 \\
+$\mu_{max}$ (comando \texttt{U}) & 4,4 & 4,4 \\
+$\tau$ con $\mu = 0{,}02$ & de 129 a 3012 muestras (16 ms a 0,38 s) & 544 muestras (68 ms) \\
+Reducción con $\mathbf{W} = \mathbf{W}^*$ & 32 dB (por el recorte de $C^{-1}$) & sin límite \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{itemize}
-\item La placa reproduce la teoría y la simulación: la SNR de entrada es la esperada
-  ($P_s/P_{n'} = 0{,}125/0{,}0399$, 5~dB) y la reducción baja unos 6--7~dB cada vez que $\mu$
-  se multiplica por 4 o 5, como predice $J_{ex} \propto \mu$. Con $\mu = 0{,}2$ y $\mu = 0{,}05$
-  la diferencia con la simulación es menor a 1~dB.
-\item Con $\mu = 0{,}002$ se ve claramente el compromiso: la reducción crece despacio
-  (unos 4~s para pasar los 25~dB) pero termina siendo la mejor, alrededor de 30~dB. A esa
-  velocidad los coeficientes fluctúan con una constante de tiempo de más de un segundo, así
-  que 2,5~s de promedio dejan una incertidumbre de varios dB; por eso la simulación (25~dB) y
-  la placa (31~dB) difieren más que en los otros casos, y ambas quedan cerca de la teoría.
-\item Los coeficientes finales con $\mu = 0{,}01$ fueron
-  \[\mathbf{w} = [0{,}703;\ 0{,}495;\ 0{,}351;\ 0{,}251;\ 0{,}183;\ 0{,}138;\ 0{,}108;\ 0{,}088],\]
-  \[\mathbf{c} = [0{,}714;\ 0{,}500;\ 0{,}350;\ 0{,}245;\ 0{,}172;\ 0{,}120;\ 0{,}084;\ 0{,}059],\]
-  es decir, el filtro aprende el correlador sin conocerlo.
-\item Con el correlador en la referencia (E7) la convergencia es visiblemente más lenta con el
-  mismo $\mu$ (figura~\ref{fig:placa_p2}b) y la reducción final es menor, por la dispersión de
-  autovalores de la referencia coloreada.
+  \item Como $\mu_{max} = 4{,}4 > 1$ y \lmsq{} sólo acepta $\mu < 1$, en la Parte 2 el filtro
+  no puede volverse inestable.
+  \item En la figura 2 la referencia es ruido coloreado, con densidad espectral
+  $\sigma_r^2|C(e^{j\omega})|^2$ que va de $5{,}4\,\sigma_r^2$ (en $\omega = 0$) a
+  $0{,}17\,\sigma_r^2$ (en $\omega = \pi$). La dispersión de autovalores de 23 hace que los modos
+  lentos tarden 23 veces más que los rápidos: con $\mu = 0{,}02$ el modo más lento tiene
+  $\tau \approx 0{,}38$~s, y la limpieza tarda en completarse alrededor de 1,5~s ($4\tau$). En el
+  cancelador clásico hay una sola constante de tiempo.
+  \item Acá $\xi_{min}$ no es cero: \textbf{la propia señal útil hace de ruido para el algoritmo},
+  porque $e = s + (n'-y)$ y el LMS adapta con todo $e$. Por eso el desajuste deja un ruido
+  residual proporcional a $\mu P_s$, y con 2~Vpp ese residuo es 6~dB mayor que con 1~Vpp. Con
+  $\mu$ chico, en cambio, pesan la lentitud y el piso de Q15: hay un $\mu$ óptimo. Además, en la
+  figura 2 la referencia tiene cerca de 200~Hz una densidad espectral 4,8 veces mayor que su
+  promedio ($|C(e^{j\omega_0})|^2 = 4{,}76$), justo donde está la senoidal, así que es de esperar
+  un desajuste mayor que en el cancelador clásico con el mismo $\mu$.
 \end{itemize}
 
-\paragraph{Tiempo de cómputo.} El comando \texttt{T} devuelve los ciclos promedio y máximo de la
-interrupción completa (ruido, correlador, LMS y DAC). El pin PROC (J2-18) está en alto durante
-ese tiempo, así que también se puede ver en el osciloscopio frente al período de muestreo de 125~$\mu$s.
-La línea medida fue
-\begin{center}\small\texttt{P2T,cyc\_prom=726,cyc\_max=987,n=549616,f\_cpu=150000000,}\\\texttt{us\_prom=4.8400e+00,us\_disp=1.2500e+02,bloques\_perdidos=0}\end{center}
-Es decir, sobre $549\,616$ interrupciones (unos 69~s a 8~kHz) la interrupción tarda en promedio
-726 ciclos ($4{,}84~\mu$s, el 3,9\,\% del período) y como máximo 987 ciclos ($6{,}58~\mu$s,
-el 5,3\,\%), sin muestras perdidas. Durante las corridas de MATLAB, con el puerto serie recibiendo comandos, el máximo
-sube a unos 1700 ciclos ($11{,}6~\mu$s, el 9\,\%), sin cambiar el promedio. Además del LMS de 8 coeficientes (unos 285 ciclos con
-CMSIS-DSP, como en la Parte~1) incluye la generación del ruido gaussiano (12 números
-uniformes por muestra), el FIR correlador, la lectura del ADC y la escritura del DAC. Queda
-más del 90\,\% del período libre, por lo que se podría usar un filtro bastante más largo o una
-frecuencia de muestreo mayor.
+\subsection{Capturas del osciloscopio}
+Con la configuración por defecto (figura 2, $\mu = 0{,}02$, $\sigma_r = 0{,}25$~V) se eligió por
+los DAC la senoidal sin ruido $s$ y la salida del cancelador $e$, y se las vio superpuestas: CH1
+(amarillo) $= s$ y CH2 (celeste) $= e$, ambos a 500~mV/div en acople AC y 1~ms/div.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}{0.49\linewidth}\centering
+  \includegraphics[width=0.95\linewidth]{p2_convergiendo.png}
+  \caption{Mientras el filtro converge.}
+  \label{fig:osc_conv}
+\end{subfigure}
+\begin{subfigure}{0.49\linewidth}\centering
+  \includegraphics[width=0.95\linewidth]{p2_regimen.png}
+  \caption{En régimen.}
+  \label{fig:osc_reg}
+\end{subfigure}
+\caption{Salida del cancelador en el osciloscopio. CH1 (amarillo): señal $s$ sin ruido. CH2
+(celeste): salida $e$ del cancelador.}
+\label{fig:osc}
+\end{figure}
+
+\begin{itemize}
+  \item \textbf{Convergiendo} (figura~\ref{fig:osc_conv}): $e$ todavía arrastra ruido, que se ve
+  como puntos dispersos alrededor de la senoidal (cada muestra del DAC dura 125~$\mu$s). El
+  osciloscopio mide 3,16~Vpp en CH2 contra 2,11~Vpp en CH1: la diferencia son los picos de ruido.
+  \item \textbf{En régimen} (figura~\ref{fig:osc_reg}): $e$ queda superpuesta a $s$, con 2,18~Vpp
+  contra 2,11~Vpp, y el mismo máximo (1,01~V) en los dos canales. El ruido residual se ve apenas
+  como algunos puntos sueltos cerca de la senoidal. El cancelador no atenúa la señal útil, porque
+  $s$ no está correlacionada con la referencia.
+\end{itemize}
+
+Para ver el aprendizaje en vivo: CH1 en la salida del DAC con $e$, base de tiempo de 200~ms/div,
+disparo externo con TRIG (J2-12) por flanco ascendente en modo \emph{single}, y apretar SW2. Se ve
+cómo la salida se va limpiando en alrededor de un segundo y medio, como se espera de las
+constantes de tiempo de la tabla~\ref{tab:p2teo}. Esta prueba se muestra en vivo en la
+presentación.
 
 % ===========================================================================
 \section{Conclusiones}
 \begin{itemize}
-  \item El LMS identifica una planta FIR de 8 coeficientes sin conocer nada de ella, sólo con su
-  entrada y su salida. Con entrada aleatoria los coeficientes convergen exactamente a los de la
-  planta, con la constante de tiempo que predice la teoría, $\tau = 1/(2\mu P_x)$.
-  \item $\mu$ fija el compromiso central: más grande, más rápido, pero más ruido de gradiente
-  (desajuste $M \approx \mu L P_x/2$) y, por encima de $2/(LP_x)$, divergencia. En la práctica
-  el mejor $\mu$ está lejos del límite: cerca de él el aprendizaje es errático y más lento.
-  \item La potencia de entrada cambia la escala de todo: con el LMS el mismo $\mu$ puede
-  converger o diverger según la amplitud de la señal. El NLMS lo resuelve normalizando el paso, a
-  costa de una división y de acumular la energía por muestra.
-  \item La convergencia de los coeficientes requiere excitación: con entrada constante el MSE se
-  anula pero sólo se aprende la ganancia de continua. Que el error sea chico no implica que el
-  sistema esté identificado.
-  \item En el cancelador, con AWGN como ruido, el filtro converge al óptimo de Wiener, que es una
-  copia del correlador, y recupera la senoidal. La señal útil actúa como ruido para el algoritmo, lo que obliga a usar
-  $\mu$ chicos para lograr buena reducción. Cuando la referencia es coloreada, la dispersión de
-  autovalores hace mucho más lenta la convergencia.
-  \item Las tres implementaciones dan el mismo resultado; CMSIS-DSP es la recomendada en el
-  Cortex-M por su costo en ciclos, y con 8 coeficientes el cancelador completo usa una fracción
-  chica del período de muestreo.
+  \item El LMS identifica una planta FIR de 10 coeficientes sin conocer nada de ella, sólo con su
+  entrada y su salida. Con entrada aleatoria converge con la constante de tiempo que predice la
+  teoría, $\tau = 1/(2\mu P_x)$, y diverge apenas $\mu$ supera $2/(LP_x) = 0{,}6$: se midió que
+  $\mu = 0{,}5$ converge (en forma errática) y $\mu = 0{,}7$ diverge.
+  \item En punto fijo el compromiso de $\mu$ cambia. El truncamiento hacia $-\infty$ de \lmsq{}
+  sesga todos los coeficientes en $2^{-16}/(\mu P_x)$ y deja un piso de MSE proporcional a
+  $1/\mu^2$: con $\mu = 0{,}002$ los coeficientes quedan 0,022 por debajo de la planta y el MSE en
+  $-28$~dB, tal como predice el modelo. Al revés que el desajuste, en Q15 un $\mu$ chico no es más
+  preciso, y cuando además hay ruido aparece un $\mu$ óptimo.
+  \item La potencia de entrada cambia la escala de todo: $\tau$ y $\mu_{max}$ son
+  proporcionales a $1/P_x$, y en Q15 una entrada chica sube además el piso de cuantización y puede
+  frenar el aprendizaje por completo.
+  \item La convergencia de los coeficientes requiere excitación: con entrada constante sólo
+  existe un modo con autovalor no nulo y el filtro sólo puede aprender la ganancia de continua.
+  Que el error sea chico no implica que el sistema esté identificado.
+  \item En el cancelador, con AWGN como ruido y el correlador en la rama de la referencia, el
+  procesador converge al filtro óptimo y recupera la senoidal: en el osciloscopio la salida
+  queda superpuesta a la señal sin ruido y con la misma amplitud. La referencia coloreada hace
+  que la convergencia tenga constantes de tiempo muy distintas (dispersión de autovalores 23), y
+  la propia señal útil actúa como ruido para el algoritmo y limita la reducción.
+  \item Separar el procesamiento (core0) de la comunicación (core1) permitió mandar a la PC
+  todos los datos que pide el análisis, incluso capturas de miles de muestras, sin que el
+  procesamiento en tiempo real tenga que esperar nunca a la UART. Dos colas de un productor y un
+  consumidor con barreras de memoria alcanzaron para sincronizar los núcleos.
 \end{itemize}
 
 % ===========================================================================
@@ -862,19 +842,7 @@ frecuencia de muestreo mayor.
 
 El proyecto completo está en la carpeta \archivo{TP4/} del repositorio
 \begin{center}\url{\Repo}\end{center}
-El firmware en \archivo{TP4/source/}, los scripts de MATLAB en
-\archivo{TP4/matlab/} y la simulación en la PC en \archivo{TP4/tools/host_sim/}.
-Se listan los archivos principales.
-
-\codigo{../../TP4/source/lms.h}{\archivo{lms.h}}
-\codigo{../../TP4/source/lms.c}{\archivo{lms.c}}
-\codigo{../../TP4/source/parte1.c}{\archivo{parte1.c}}
-\codigo{../../TP4/source/parte2.c}{\archivo{parte2.c}}
-\codigo{../../TP4/source/coefs.c}{\archivo{coefs.c}}
-\codigo{../../TP4/source/fir_fijo.h}{\archivo{fir_fijo.h}}
-\codigo{../../TP4/source/prng.h}{\archivo{prng.h}}
-\codigo{../../TP4/source/main.c}{\archivo{main.c}}
-\codigo{../../TP4/source/app_config.h}{\archivo{app_config.h}}
-\codigo[language=Matlab]{../../TP4/matlab/tp4_captura.m}{\archivo{tp4_captura.m}}
+El firmware del núcleo 0 en \archivo{TP4/TP4_core0/source/}, el del núcleo 1 en
+\archivo{TP4/TP4_core1/source/} y los scripts de MATLAB en \archivo{TP4/matlab/}.
 
 \end{document}
