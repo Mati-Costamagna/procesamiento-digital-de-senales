@@ -119,12 +119,6 @@ FPU de simple precisión y las mismas instrucciones DSP que el Cortex-M4, y corr
 biblioteca CMSIS-DSP; el core1 no tiene ni FPU ni extensiones DSP. Por eso el trabajo se 
 repartió: el core0 hace todo el procesamiento y el core1 sólo atiende la comunicación con la PC.
 
-Todo el código está en la carpeta \archivo{TP4/} del repositorio
-\begin{center}\url{\Repo}\end{center}
-Ahí están los proyectos de MCUXpresso de los dos núcleos (\texttt{TP4/TP4\_core0} y
-\texttt{TP4/TP4\_core1}) y los scripts de MATLAB (\texttt{TP4/matlab}) que manejan la placa
-por el puerto serie y generan las figuras de este informe.
-
 % ===========================================================================
 \section{Marco teórico}
 
@@ -183,7 +177,7 @@ muestra:
 \caption{Lo que hace \lmsq{} en cada muestra y sus consecuencias.}
 \label{tab:q15}
 \small
-\begin{tabular}{p{5.6cm}p{9.2cm}}
+\begin{tabular}{p{6.8cm}p{8cm}}
 \toprule
 Paso en CMSIS & Consecuencia \\
 \midrule
