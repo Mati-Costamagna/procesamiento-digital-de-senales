@@ -4,7 +4,7 @@ function datos = tp4_captura(puerto, comandos, fin, archivo, opciones)
 %   datos = tp4_captura(puerto, comandos, fin, archivo)
 %
 %   puerto    'COM3' (el MCU-Link VCom Port; ver el Administrador de dispositivos)
-%   comandos  cell array de comandos, ej. {'1', 'G1', 'E0', 'A1', 'U0.01', 'S'}
+%   comandos  cell array de comandos, ej. {'1', 'E0', 'A1', 'U0.01', 'S'}
 %   fin       cuándo dejar de leer:
 %               - texto: se corta al recibir una línea que empieza así
 %                 (ej. 'P1F' para una corrida, 'P1B,FIN' para un barrido)
@@ -15,9 +15,9 @@ function datos = tp4_captura(puerto, comandos, fin, archivo, opciones)
 %   la reducción de ruido (Parte 2). Devuelve lo mismo que tp4_parse_log.
 %
 %   Ejemplos:
-%     d = tp4_captura('COM3', {'1','G1','E0','A1','U0.01','S'}, 'P1F', 'p1_mu0.01.txt');
-%     d = tp4_captura('COM3', {'1','G1','E0','A1','B'}, 'P1B,FIN', 'p1_barrido.txt');
-%     d = tp4_captura('COM3', {'2','U0.01','Z'}, 10, 'p2_mu0.01.txt');
+%     d = tp4_captura('COM3', {'1','E0','A1','U0.01','S'}, 'P1F', 'p1_mu0.01.txt');
+%     d = tp4_captura('COM3', {'1','E0','A1','B'}, 'P1B,FIN', 'p1_barrido.txt');
+%     d = tp4_captura('COM3', {'2','U0.02','Z'}, 10, 'p2_mu0.01.txt');
 %
 %   Requiere MATLAB R2019b o posterior (serialport).
 
