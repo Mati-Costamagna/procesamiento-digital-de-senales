@@ -1,0 +1,1728 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  Laboratorio 3 - FFT con CMSIS-DSP en MCXN947
+%  Estructura de carpetas (igual que en el TP1 y el TP2):
+%     main.tex
+%     informe-fcefyn.sty      -> copia de documentacion/TP2/
+%     img/                    -> logos, capturas de Config Tools, de la GUI
+%                                de MATLAB y del terminal serie
+%
+%  Imagenes que usa este documento (las que falten aparecen como un recuadro
+%  rojo con el nombre esperado):
+%     img/unc_logo.png, img/fcefyn_logo.jpg      (los mismos del TP2)
+%     img/peripherals-lpuart-tp3.png             Config Tools > Peripherals >
+%                                                LP_FLEXCOMM4 (LPUART 115200 8N1)
+%     img/pins-tsi-tp3.png                       Config Tools > Pins: P1_3 como
+%                                                TSI0_CH3
+%     img/clocks-tsi-tp3.png                     Config Tools > Clocks: reloj del
+%                                                TSI desde FRO_12M
+%     img/terminal-trama.png                     Terminal serie con una trama
+%                                                (cabecera, filas y END)
+%     img/sim-fuga-1000.png, img/sim-fuga-1005.png
+%                                                explorar_fft_tp3.m con f0 = 1000
+%                                                y 1005 Hz (fs = 8 kS/s, N = 512)
+%     img/gui-bypass-8k.png                      GUI en bypass, 1 kHz, 8 kS/s
+%     img/gui-fft-8k-512.png                     GUI en FFT, 1 kHz, 8 kS/s, N=512
+%     img/gui-fft-8k-1024.png                    idem N = 1024
+%     img/gui-fft-8k-2048.png                    idem N = 2048
+%     img/gui-fft-22k-512.png                    GUI en FFT, 1 kHz, 22 kS/s, N=512
+%     img/gui-fft-48k-512.png                    GUI en FFT, 1 kHz, 48 kS/s, N=512
+%     img/gui-alias-8k.png                       5 kHz a 8 kS/s (aliasing)
+%     img/gui-alias-16k.png                      5 kHz a 16 kS/s
+%     img/gui-cuadrada-8k.png                    cuadrada de 500 Hz a 8 kS/s
+%
+%  El Anexo incluye ../../TP3/source/TP3.c y ../../TP3/matlab/recibir_tp3.m,
+%  con la ruta relativa a esta carpeta (si se compila fuera del repositorio
+%  aparece una marca roja en su lugar).
+%
+%  Todo lo que aparece entre corchetes rojos (\completar{...}) es contenido
+%  que falta llenar. Para la entrega, descomentar \entregafinal: el documento
+%  avisara en el log si quedo alguna marca sin resolver.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass[11pt,a4paper]{article}
+\usepackage{informe-fcefyn}
+
+% \entregafinal
+
+% ------------------------- Datos de la caratula ------------------------------
+\materia{Procesamiento Digital de Señales}
+\carrera{Ingeniería en Computación}
+\subtitulo{Laboratorio 3}
+\tema{FFT con CMSIS-DSP en MCXN947}
+\plataforma{FRDM-MCXN947 \textperiodcentered{} MCUXpresso IDE \textperiodcentered{} CMSIS-DSP \textperiodcentered{} MATLAB}
+\autor{Costamagna, Matias Javier}{44.512.437}{matias.costamagna@mi.unc.edu.ar}
+\autor{Moreyra, Julián}{45.214.537}{julian.moreyra@mi.unc.edu.ar}
+\autor{Rivera, Mariano}{45.432.921}{luismarianorivera.25@mi.unc.edu.ar}
+\autor{Rojas, Facundo Nicolás}{44.629.222}{facundo.rojas.222@mi.unc.edu.ar}
+\docentes{Rossi, Roberto Raúl \quad\textperiodcentered\quad Parlanti, Gustavo Fernando \quad\textperiodcentered\quad Molina, Germán Alcides \quad\textperiodcentered\quad Ferreyra, Pablo Alejandro}
+\fechaentrega{\today}
+\logoizquierdo{img/unc_logo.png}
+\logoderecho{img/fcefyn_logo.jpg}
+
+% ---------------- Parametros del diseno (usados en las tablas) ---------------
+% Igual que en el TP1 y el TP2: CTIMER0 a 150 MHz, match 3 en toggle.
+\frecuenciatimer{150000000}
+\divisordisparo{2}
+
+% Velocidad de la UART [bit/s] y bits por caracter (8N1: inicio + 8 + parada)
+\newcommand{\baudios}{115200}
+\newcommand{\bitsporbyte}{10}
+
+% Tipos y funciones propios de este trabajo en los listados de codigo
+\lstset{morekeywords=[2]{arm_cfft_instance_f32,tsi_selfCap_config_t,size_t}}
+
+% \filaresol{fs nominal [Hz]}{MR}: fs real, resolucion fs/N y duracion N/fs
+% de la ventana para N = 512, 1024 y 2048.
+\newcommand{\filaresol}[2]{%
+  \xdef\fsrealtmp{\fpeval{150000000/(2*(#2+1))}}%
+  \xdef\dfa{\fpeval{round(\fsrealtmp/512,2)}}%
+  \xdef\dfb{\fpeval{round(\fsrealtmp/1024,2)}}%
+  \xdef\dfc{\fpeval{round(\fsrealtmp/2048,2)}}%
+  \xdef\tva{\fpeval{round(1000*512/\fsrealtmp,1)}}%
+  \xdef\tvb{\fpeval{round(1000*1024/\fsrealtmp,1)}}%
+  \xdef\tvc{\fpeval{round(1000*2048/\fsrealtmp,1)}}%
+  \qty{#1}{\hertz} & \num{\dfa} & \num{\dfb} & \num{\dfc} &
+  \num{\tva} & \num{\tvb} & \num{\tvc}\\}
+
+% \filacomp{N}: productos complejos de la DFT directa y de la FFT radix-2.
+\newcommand{\filacomp}[1]{%
+  \xdef\cdirtmp{\fpeval{(#1)*(#1)}}%
+  \xdef\cffttmp{\fpeval{round((#1)/2*ln(#1)/ln(2),0)}}%
+  \xdef\crattmp{\fpeval{round((#1)*(#1)/((#1)/2*ln(#1)/ln(2)),1)}}%
+  \xdef\etapastmp{\fpeval{round(ln(#1)/ln(2),0)}}%
+  \num{#1} & \num{\etapastmp} & \num{\cdirtmp} & \num{\cffttmp} &
+  \num{\crattmp}\\}
+
+% \filatx{N}{bytes de la trama}: tiempo de transmision, de adquisicion y
+% periodo de refresco del espectro a 8 kS/s y a 48 kS/s.
+\newcommand{\filatx}[2]{%
+  \xdef\txtmp{\fpeval{round((#2)*\bitsporbyte/\baudios,2)}}%
+  \xdef\acqatmp{\fpeval{round(1000*(#1)/8000,1)}}%
+  \xdef\acqbtmp{\fpeval{round(1000*(#1)/47984.64,1)}}%
+  \xdef\peratmp{\fpeval{round((#1)/8000+(#2)*\bitsporbyte/\baudios,2)}}%
+  \xdef\perbtmp{\fpeval{round((#1)/47984.64+(#2)*\bitsporbyte/\baudios,2)}}%
+  \num{#1} & \num{#2} & \num{\txtmp} & \num{\acqatmp} & \num{\acqbtmp} &
+  \num{\peratmp} & \num{\perbtmp}\\}
+
+\begin{document}
+
+\caratula
+\setcounter{tocdepth}{2}
+\tableofcontents
+\clearpage
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introducción}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{consigna}[Laboratorio 3 \textemdash{} Transformada Rápida de Fourier]
+\textbf{Objetivo.} Realizar la implementación de la Transformada Rápida de
+Fourier (FFT) de 512 muestras.
+
+\textbf{Descripción.} Realizar un programa aplicativo que sea capaz de aplicar
+la FFT a un buffer de memoria de diferente tamaño (por ejemplo, 512, 1024 y
+2048 muestras), que es adquirido con el Laboratorio~1 teniendo en cuenta
+además los cambios de velocidades de muestreo. Con una de las teclas de la
+placa de evaluación se habilitará la aplicación de la FFT o se hará
+\emph{bypass} de la misma a un buffer de salida distinto del buffer de
+entrada. Transmitir el buffer (resultado de la FFT) por el puerto serie (SCI)
+y graficar en la PC con alguna aplicación (por ejemplo, una GUI de MATLAB) el
+espectro obtenido. Sacar conclusiones respecto de la implementación de la FFT
+cuando cambia la frecuencia de muestreo o el tamaño de la ventana de
+muestras.
+\end{consigna}
+
+\subsection{Requerimientos}
+
+De la consigna se desprenden los siguientes requerimientos, que se usan como
+guía para el diseño y como lista de verificación en la
+sección~\ref{sec:verificacion}:
+
+\begin{enumerate}[label=\textbf{R\arabic*},leftmargin=2.2em]
+  \item \label{req:fs} Adquirir la señal con la aplicación del
+        Laboratorio~1, con sus cinco velocidades de muestreo
+        (\qtylist{8;16;22;44;48}{\kilo\sps}) seleccionables durante la
+        ejecución.
+  \item \label{req:n} Guardar las muestras en un buffer de entrada de
+        tamaño variable: 512, 1024 o 2048 muestras.
+  \item \label{req:fft} Aplicar la FFT al buffer de entrada.
+  \item \label{req:tecla} Con una tecla, habilitar la FFT o hacer
+        \emph{bypass} hacia un buffer de salida distinto del de entrada.
+  \item \label{req:sci} Transmitir el buffer de salida por el puerto serie.
+  \item \label{req:gui} Graficar en la PC, con una aplicación de MATLAB, el
+        espectro recibido.
+  \item \label{req:concl} Sacar conclusiones sobre el efecto de la frecuencia
+        de muestreo y del tamaño de la ventana en la FFT.
+\end{enumerate}
+
+\begin{nota}[Decisiones de implementación respecto de la consigna]
+\begin{itemize}[nosep]
+  \item El tamaño de la ventana se elige durante la ejecución, sin
+        recompilar: el touchpad capacitivo E1 recorre 512, 1024 y 2048
+        muestras. SW3 conserva la selección circular de la frecuencia de
+        muestreo de los laboratorios anteriores y SW2 alterna entre FFT y
+        \emph{bypass}, como pide la consigna.
+  \item El procesamiento es \emph{por bloques}: la rutina del ADC llena el
+        buffer de entrada y el lazo principal calcula la FFT y transmite el
+        resultado. Mientras tanto la adquisición sigue disparándose por
+        hardware, pero las muestras se descartan hasta que el bloque termina
+        de enviarse. Cada espectro corresponde entonces a una ventana de
+        $N$ muestras consecutivas, y entre dos espectros hay un hueco. La
+        sección~\ref{sec:tiempos} muestra que con el puerto serie a
+        \qty{115200}{\bit\per\second} no es posible transmitir espectros
+        en forma continua.
+  \item La FFT se calcula en punto flotante de simple precisión con
+        \texttt{arm\_cfft\_f32()} de CMSIS-DSP, aprovechando la FPU del
+        Cortex-M33 (sección~\ref{sec:formato}).
+  \item En \emph{bypass} el buffer de salida contiene las muestras de la
+        ventana, sin transformar, y la GUI las grafica en el dominio del
+        tiempo. Así el mismo enlace sirve para ver la señal y su espectro.
+  \item El TP3 no usa el DAC: la salida es el puerto serie. El LED RGB
+        conserva el color de cada frecuencia de muestreo; el modo, el tamaño
+        de la ventana y la $f_s$ de cada bloque viajan en la cabecera de la
+        trama y la GUI los muestra en el título del gráfico.
+\end{itemize}
+\end{nota}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Configuración del ambiente}\label{sec:ambiente}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Herramientas utilizadas}
+
+\begin{table}[H]
+\centering
+\caption{Hardware y software del entorno de trabajo.}
+\label{tab:herramientas}
+\begin{tabular}{@{}l l@{}}
+\toprule
+\textbf{Elemento} & \textbf{Versión / modelo}\\
+\midrule
+Placa de evaluación     & FRDM-MCXN947 (Cortex-M33 con FPU, núcleo \texttt{cm33\_core0})\\
+IDE                     & MCUXpresso IDE v25.6.136\\
+SDK                     & \texttt{SDK\_26.06.00\_FRDM-MCXN947}\\
+Herramientas de config. & MCUXpresso Config Tools (Clocks, Pins, Peripherals)\\
+Proyecto base           & Proyecto del Laboratorio 2 (\archivo{TP2})\\
+Drivers                 & SDK: \texttt{fsl\_lpuart}, \texttt{fsl\_tsi\_v6}, \texttt{fsl\_lpadc}, \texttt{fsl\_ctimer}\\
+Biblioteca DSP          & CMSIS-DSP (\texttt{arm\_cfft\_f32})\\
+Visualización           & MATLAB (función \texttt{serialport}, R2019b o posterior)\\
+Enlace serie            & Puerto COM virtual del MCU-Link integrado (USB)\\
+Generador de señales    & \\
+Osciloscopio            & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Creación del proyecto}
+
+El proyecto \archivo{TP3} parte del proyecto del Laboratorio 2: conserva la
+cadena CTIMER0 $\rightarrow$ INPUTMUX $\rightarrow$ LPADC0, la selección
+circular de la frecuencia de muestreo con SW3, el color del LED según la
+$f_s$ y la lectura del touchpad sin interrupciones. Sobre esa base:
+
+\begin{enumerate}[nosep]
+  \item Se quitó el DAC0 y el filtrado muestra a muestra: la rutina del ADC
+        sólo guarda muestras, y el procesamiento pasa al lazo principal.
+  \item Se mantuvo el código fuente de CMSIS-DSP (carpeta
+        \archivo{CMSIS/DSP}), que además de los filtros incluye las
+        funciones de transformadas (\archivo{TransformFunctions}) y las
+        tablas precalculadas (\archivo{CommonTables}):
+        \texttt{arm\_cfft\_f32()}, \texttt{arm\_bitreversal\_32()} y las
+        instancias constantes \texttt{arm\_cfft\_sR\_f32\_len512},
+        \texttt{\_len1024} y \texttt{\_len2048} de
+        \archivo{arm_const_structs.h}.
+  \item Se configuró en Config Tools la instancia \texttt{LP\_FLEXCOMM4}
+        como LPUART (sección~\ref{sec:cambios-perif}), que es la que la placa
+        conecta al puerto COM virtual del MCU-Link.
+  \item Se agregó el componente \texttt{tsi\_v6} del SDK (driver
+        \archivo{fsl_tsi_v6}) para leer el touchpad, igual que en el
+        Laboratorio 2.
+  \item La lógica de la aplicación está en \archivo{source/TP3.c} y la GUI y
+        las herramientas de prueba de MATLAB en \archivo{TP3/matlab/}
+        (sección~\ref{sec:matlab}).
+\end{enumerate}
+
+\subsection{Relojes y pines}
+
+Los relojes son los del Laboratorio~2: PLL0 a \qty{150}{\mega\hertz} para el
+núcleo y el CTIMER0, y FRO\_HF de \qty{48}{\mega\hertz} para el ADC0. Se
+agrega el FRO de \qty{12}{\mega\hertz} como reloj funcional del
+LP\_FLEXCOMM4 (la UART) y del TSI. La tabla~\ref{tab:pines} resume la
+asignación de pines.
+
+\begin{table}[H]
+\centering
+\caption{Asignación de pines. Respecto del Laboratorio 2 desaparece la salida
+del DAC y se agrega la UART.}
+\label{tab:pines}
+\footnotesize
+\begin{tabular}{@{}l l l l@{}}
+\toprule
+\textbf{Función} & \textbf{Pin} & \textbf{Periférico} & \textbf{Conector / observación}\\
+\midrule
+Entrada analógica          & \pin{ADC0\_A0}          & LPADC0 canal A0    & \texttt{J4[2]} (Arduino A0)\\
+Disparo del ADC            & \pin{P0\_19}            & CT0\_MAT3          & \texttt{J2[13]}, punto de prueba\\
+LED rojo / verde / azul    & \pin{P0\_10}, \pin{P0\_27}, \pin{P1\_2} & GPIO0, GPIO1 & Activos en bajo\\
+Tecla SW3 (velocidad)      & \pin{P0\_6}             & GPIO0, canal IRQ 0 & Flanco descendente, pull-up interno\\
+Tecla SW2 (FFT / \emph{bypass}) & \pin{P0\_23}       & GPIO0, canal IRQ 1 & Flanco descendente\\
+Touchpad E1 (tamaño $N$)   & \pin{P1\_3}             & TSI0, canal 3      & Self-cap, disparo por software\\
+UART RXD / TXD             & \pin{P1\_8}, \pin{P1\_9} & LP\_FLEXCOMM4      & COM virtual del MCU-Link\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% ATENCION: en el commit 8b11c19 el proyecto TP3 no tiene asignado P1_3 como
+% TSI0_CH3 en pin_mux.c ni el reloj del TSI (TSICLKSEL = FRO_12M, TSICLKDIV)
+% en clock_config.c. Sin eso init_touch() no completa el barrido de
+% calibracion, deja touch_ok en false y el tamano queda fijo en 512. Hay que
+% replicar en Config Tools lo hecho en el TP2 (ver TP2/board/pin_mux.c y
+% TP2/board/clock_config.c) y borrar el \completar de abajo.
+\completar{Verificar que el TP3 tenga en Config Tools \pin{P1\_3} como
+\texttt{TSI0\_CH3} y el reloj del TSI desde FRO\_12M, como en el TP2: en el
+estado actual del repositorio faltan, y sin ellos el touchpad queda
+deshabilitado y $N$ fijo en 512.}
+
+\captura{img/pins-tsi-tp3.png}{Config Tools \textemdash{} Pins}{\pin{P1\_3}
+asignado a \texttt{TSI0\_CH3} (touchpad E1), con el buffer de entrada
+digital deshabilitado.}{fig:pins-tsi}
+
+\captura{img/clocks-tsi-tp3.png}{Config Tools \textemdash{} Clocks}{Reloj
+del TSI tomado del FRO de \qty{12}{\mega\hertz}.}{fig:clocks-tsi}
+
+\subsection{Cambios en los periféricos}\label{sec:cambios-perif}
+
+La tabla~\ref{tab:cambios} resume lo que cambió respecto del Laboratorio 2.
+El resto de la configuración (CTIMER0 en modo toggle sobre el match 3,
+disparo del ADC por INPUTMUX, LPADC0 en \qty{16}{\bit} con referencia
+\texttt{kLPADC\_ReferenceVoltageAlt3}, interrupciones de las teclas en las
+líneas 0 y 1 del GPIO0) se mantiene.
+
+\begin{table}[H]
+\centering
+\caption{Diferencias de configuración respecto del Laboratorio 2.}
+\label{tab:cambios}
+\footnotesize
+\begin{tabular}{@{}l p{5.0cm} p{6.4cm}@{}}
+\toprule
+\textbf{Elemento} & \textbf{Laboratorio 2} & \textbf{Laboratorio 3}\\
+\midrule
+DAC0                  & \texttt{init\_dac()}, una muestra por interrupción
+                      & No se usa\\
+VREF                  & Encendido por \texttt{init\_dac()}
+                        (\texttt{SPC0->ACTIVE\_CFG1})
+                      & Encendido explícito con
+                        \texttt{SPC\_EnableActive}\allowbreak\texttt{ModeAnalogModules()}
+                        antes de los periféricos\\
+LP\_FLEXCOMM4         & Consola de depuración (\texttt{PRINTF})
+                      & LPUART de Config Tools, \num{115200}~bit/s, 8N1, sólo
+                        transmisión, por \emph{polling}\\
+Tecla SW2             & Selección de filtro & FFT / \emph{bypass}\\
+Touchpad E1           & Habilita el filtro  & Elige $N$: 512 $\rightarrow$ 1024
+                                              $\rightarrow$ 2048 $\rightarrow$ 512\\
+LED RGB               & Color según la $f_s$; parpadeo según el filtro
+                      & Color según la $f_s$\\
+Procesamiento         & Muestra a muestra, en la rutina del ADC
+                      & Por bloques de $N$ muestras, en el lazo principal\\
+Buffers               & \texttt{buffer\_in[512]} y \texttt{buffer\_out[512]}
+                        (q15, circulares)
+                      & \texttt{buffer\_in[2048]} (q15) y
+                        \texttt{buffer\_out[4096]} (float32, complejo
+                        intercalado), lineales\\
+CMSIS-DSP             & \texttt{arm\_fir\_q15()}
+                      & \texttt{arm\_cfft\_f32()} y tablas de
+                        \archivo{arm_const_structs.h}\\
+Lazo principal        & Touchpad y LED
+                      & Touchpad, FFT y transmisión\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\captura{img/peripherals-lpuart-tp3.png}{Config Tools \textemdash{}
+LP\_FLEXCOMM4}{Instancia LPUART en modo \emph{polling}: \num{115200}~bit/s,
+8 bits de datos, sin paridad, 1 bit de parada, sólo transmisión.}{fig:lpuart}
+
+\subsubsection{Orden de inicialización y referencia del ADC}
+
+El LPADC0 usa la referencia \texttt{kLPADC\_ReferenceVoltageAlt3}, que
+proviene del módulo VREF. En el Laboratorio 2 el VREF quedaba encendido como
+efecto lateral de \texttt{init\_dac()}, que escribía
+\texttt{SPC0->ACTIVE\_CFG1 |= 0x11} para alimentar el DAC0 y el VREF. Al
+quitar el DAC en el TP3, el VREF quedó apagado y el ADC dejó de entregar
+bloques válidos: no salía ninguna trama por la UART. Por eso
+\texttt{main()} enciende el VREF en forma explícita con
+\begin{center}
+\texttt{SPC\_EnableActiveModeAnalogModules(SPC0, kSPC\_controlVref);}
+\end{center}
+\emph{antes} de llamar a \texttt{BOARD\_InitBootPeripherals()}, que calibra el
+ADC y arranca el CTIMER0. Así la calibración y la primera conversión ya se hacen
+con la referencia estable.
+
+\subsubsection{Prioridades de interrupción}
+
+Igual que en los laboratorios anteriores, \texttt{ADC0\_IRQn},
+\texttt{GPIO00\_IRQn} y \texttt{GPIO01\_IRQn} quedan con la prioridad por
+defecto (0), así que ninguna desaloja a otra y las variables que comparten
+no pueden cambiar en medio de una rutina. El SysTick, que sólo cuenta
+milisegundos para el touchpad, queda con la prioridad mínima
+(\texttt{SysTick\_Config()} la fija así).
+
+A diferencia del Laboratorio 2, el trabajo pesado (la FFT y la transmisión)
+no está en ninguna rutina de interrupción sino en el lazo principal, que
+corre en modo \emph{thread} y puede ser interrumpido en cualquier momento.
+La rutina del ADC, que es corta, sigue atendiendo cada conversión durante
+los segundos que dura una transmisión, y por eso la FIFO del ADC nunca se
+desborda aunque las muestras no se guarden.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{La Transformada Rápida de Fourier}\label{sec:teoria}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Transformada discreta de Fourier}
+
+La transformada discreta de Fourier (DFT) de $N$ puntos de una secuencia
+$x[n]$, $n = 0, \dots, N-1$, es
+\begin{equation}
+  X[k] = \sum_{n=0}^{N-1} x[n]\, W_N^{kn},
+  \qquad W_N = e^{-j 2\pi / N},
+  \qquad k = 0, \dots, N-1.
+  \label{eq:dft}
+\end{equation}
+Si $x[n]$ son muestras tomadas a $f_s$, el coeficiente $X[k]$ corresponde a
+la frecuencia $f_k = k\, f_s / N$, así que la DFT evalúa el espectro en una
+grilla de frecuencias equiespaciadas con separación
+\begin{equation}
+  \Delta f = \frac{f_s}{N} = \frac{1}{T_v},
+  \qquad T_v = \frac{N}{f_s},
+  \label{eq:resolucion}
+\end{equation}
+donde $T_v$ es la duración de la ventana analizada. La
+ecuación~\eqref{eq:resolucion} es la que gobierna todo el trabajo: la
+resolución en frecuencia es la inversa de la duración de la ventana, y no
+depende de $f_s$ y de $N$ por separado sino de su cociente.
+
+Cuando la entrada es real, como la del ADC, los coeficientes cumplen
+$X[N-k] = X^*[k]$: la mitad superior del espectro es la imagen conjugada de
+la inferior y la información está en los $N/2+1$ coeficientes que van de
+\qty{0}{\hertz} a $f_s/2$. Los $k > N/2$ corresponden a frecuencias
+negativas.
+
+\subsection{Algoritmo de la FFT}
+
+Calcular la ecuación~\eqref{eq:dft} en forma directa requiere $N$ productos
+complejos por coeficiente, es decir, $N^2$ en total. La FFT obtiene el mismo
+resultado aprovechando la periodicidad y la simetría de $W_N^{kn}$. En la
+versión de diezmado en el tiempo (radix-2) la secuencia se separa en sus
+muestras pares e impares, $g[m] = x[2m]$ y $h[m] = x[2m+1]$, cuyas DFT de
+$N/2$ puntos son $G[k]$ y $H[k]$. Entonces
+\begin{equation}
+  X[k] = G[k] + W_N^{k} H[k], \qquad
+  X[k + N/2] = G[k] - W_N^{k} H[k], \qquad
+  k = 0, \dots, N/2 - 1,
+  \label{eq:mariposa}
+\end{equation}
+porque $W_N^{k+N/2} = -W_N^{k}$. Cada par de la
+ecuación~\eqref{eq:mariposa} es una \emph{mariposa}: un producto complejo
+por el factor de giro (\emph{twiddle}) $W_N^k$ y dos sumas complejas.
+Aplicando la división recursivamente hasta DFT de 2 puntos quedan
+$\log_2 N$ etapas de $N/2$ mariposas cada una, con un total de
+$(N/2)\log_2 N$ productos complejos. El precio es el orden: si el cálculo se
+hace en el lugar (\emph{in place}), una de las dos secuencias, la entrada o
+la salida, queda en orden de \emph{bits invertidos} (el índice $n$ escrito
+en binario y leído al revés) y hay que reordenarla.
+
+\begin{table}[H]
+\centering
+\caption{Productos complejos de la DFT directa y de la FFT radix-2 para los
+tres tamaños de ventana.}
+\label{tab:complejidad}
+\begin{tabular}{@{}r r r r r@{}}
+\toprule
+\textbf{$N$} & \textbf{Etapas} & \textbf{DFT: $N^2$} &
+\textbf{FFT: $(N/2)\log_2 N$} & \textbf{Relación}\\
+\midrule
+\filacomp{512}
+\filacomp{1024}
+\filacomp{2048}
+\bottomrule
+\end{tabular}
+\end{table}
+
+La ventaja crece con $N$: al duplicar la ventana la DFT directa cuesta
+cuatro veces más y la FFT apenas algo más del doble. Para $N = 2048$ la DFT
+directa necesitaría más de cuatro millones de productos complejos, que a
+\qty{150}{\mega\hertz} y con varios ciclos por producto serían más de
+\qty{100}{\milli\second}; la FFT lo resuelve con unos \num{11000}.
+
+\subsection{Implementación en CMSIS-DSP}\label{sec:cmsis-fft}
+
+\texttt{arm\_cfft\_f32()} calcula la FFT compleja de $N$ puntos en punto
+flotante de simple precisión. Recibe un arreglo de $2N$ valores
+\texttt{float32\_t} con la parte real y la imaginaria intercaladas,
+$\{\mathrm{Re}\,x[0], \mathrm{Im}\,x[0], \mathrm{Re}\,x[1], \dots\}$, y
+devuelve el resultado en el mismo arreglo. Sus parámetros son:
+
+\begin{itemize}[nosep]
+  \item \texttt{S}: puntero a una instancia \texttt{arm\_cfft\_instance\_f32}
+        con la longitud $N$, la tabla de factores de giro y la tabla de
+        reordenamiento. CMSIS-DSP las trae precalculadas en flash como
+        constantes (\texttt{arm\_cfft\_sR\_f32\_len512}, \dots), así que no
+        hay que inicializar nada en tiempo de ejecución.
+  \item \texttt{ifftFlag}: 0 para la transformada directa, 1 para la
+        inversa.
+  \item \texttt{bitReverseFlag}: 1 para reordenar la salida y obtener los
+        coeficientes en orden natural ($X[0], X[1], \dots$).
+\end{itemize}
+
+Internamente no usa mariposas radix-2 sino radix-8, que combinan ocho
+entradas por mariposa y reducen la cantidad de etapas a $\log_8 N$ y la de
+multiplicaciones por factores de giro. Como $512 = 8^3$, la FFT de 512 puntos
+se resuelve sólo con radix-8 (\texttt{arm\_radix8\_butterfly\_f32()}). Para
+1024 y 2048 agrega primero una etapa radix-2 o radix-4 que divide el problema
+en dos o cuatro FFT de 512 (\texttt{arm\_cfft\_radix8by2\_f32()} y
+\texttt{arm\_cfft\_radix8by4\_f32()}). Al final, si
+\texttt{bitReverseFlag} vale 1, \texttt{arm\_bitreversal\_32()} intercambia
+los pares de posiciones indicados en la tabla de reordenamiento. La
+tabla~\ref{tab:tablas} muestra la memoria que ocupan esas tablas.
+
+\begin{table}[H]
+\centering
+\caption{Tablas precalculadas de CMSIS-DSP para cada tamaño (en flash).}
+\label{tab:tablas}
+\small
+\begin{tabular}{@{}r l r l r@{}}
+\toprule
+\textbf{$N$} & \textbf{Factores de giro} & \textbf{Bytes} &
+\textbf{Reordenamiento} & \textbf{Bytes}\\
+\midrule
+512  & \texttt{twiddleCoef\_512}, \num{1024} float  & \num{4096}  &
+       \texttt{armBitRevIndexTable512}, 448 \texttt{uint16}   & 896\\
+1024 & \texttt{twiddleCoef\_1024}, \num{2048} float & \num{8192}  &
+       \texttt{armBitRevIndexTable1024}, \num{1800} \texttt{uint16} & \num{3600}\\
+2048 & \texttt{twiddleCoef\_2048}, \num{4096} float & \num{16384} &
+       \texttt{armBitRevIndexTable2048}, \num{3808} \texttt{uint16} & \num{7616}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+CMSIS-DSP también ofrece \texttt{arm\_rfft\_fast\_f32()}, que aprovecha que
+la entrada es real: calcula una FFT compleja de $N/2$ puntos y la separa en
+los $N/2+1$ coeficientes no redundantes, con aproximadamente la mitad de
+operaciones y de memoria. Se eligió la transformada compleja porque su
+salida es directamente la DFT completa de la ecuación~\eqref{eq:dft}, sin
+el formato empaquetado de la real, y porque con una entrada real basta con
+poner en cero la parte imaginaria. La sección~\ref{sec:tiempos} muestra que
+el costo de cálculo es despreciable frente al de la transmisión, así que el
+ahorro no cambia el comportamiento del sistema.
+
+\subsection{Interpretación de la amplitud}\label{sec:amplitud}
+
+\texttt{arm\_cfft\_f32()} no normaliza la transformada directa. Para una
+senoidal de amplitud $A$ (en las unidades normalizadas de la
+sección~\ref{sec:formato}) cuya frecuencia coincide exactamente con un
+coeficiente $k_0$, la ecuación~\eqref{eq:dft} da $|X[k_0]| = |X[N-k_0]| =
+A\,N/2$: la amplitud se reparte entre la frecuencia positiva y su imagen
+negativa, y cada una crece con $N$. Para que el gráfico no dependa del
+tamaño de la ventana, la GUI dibuja el espectro de un solo lado,
+\begin{equation}
+  A[0] = \frac{|X[0]|}{N}, \qquad
+  A[k] = \frac{2\,|X[k]|}{N}, \quad 1 \le k \le \frac{N}{2} - 1, \qquad
+  A[N/2] = \frac{|X[N/2]|}{N},
+  \label{eq:amplitud}
+\end{equation}
+con lo que una senoidal de amplitud $A$ aparece con altura $A$ y la
+componente continua con su valor medio. Se calcula en la PC y no en la
+placa para enviar el resultado exacto de \texttt{arm\_cfft\_f32()}.
+
+\subsection{Fuga espectral y ventana}\label{sec:fuga}
+
+La DFT trata la ventana de $N$ muestras como un período de una señal
+periódica. Si la señal tiene un número entero de ciclos en la ventana, su
+frecuencia cae exactamente sobre un coeficiente y el espectro tiene un único
+valor no nulo. Si no, la extensión periódica tiene un salto en los bordes y
+la energía se reparte entre todos los coeficientes: es la \emph{fuga
+espectral} (\emph{leakage}). Equivale a multiplicar la señal por una
+ventana rectangular, cuya transformada es un núcleo de Dirichlet con lóbulo
+principal de ancho $2\,\Delta f$ y lóbulos laterales que empiezan en
+\qty{-13.3}{\deci\bel} y decaen lentamente.
+
+La fuga tiene dos consecuencias prácticas:
+\begin{itemize}[nosep]
+  \item \textbf{Error de amplitud} (\emph{scalloping}): si la frecuencia cae
+        entre dos coeficientes, el pico es menor que $A$. En el peor caso,
+        a medio coeficiente, la pérdida es de \qty{3.92}{\deci\bel}
+        ($A$ se ve como $0{,}64\,A$).
+  \item \textbf{Enmascaramiento}: los lóbulos laterales de un tono fuerte
+        pueden tapar a un tono débil cercano.
+\end{itemize}
+
+El script \archivo{explorar_fft_tp3.m} lo ilustra con $f_s =
+\qty{8}{\kilo\sps}$ y $N = 512$ ($\Delta f = \qty{15.625}{\hertz}$). Una
+senoidal de \qty{1000}{\hertz} tiene exactamente 64 ciclos en la ventana:
+cae en el coeficiente 64 y la amplitud se lee sin error. Con
+\qty{1005}{\hertz} hay $64{,}32$ ciclos: el pico queda en
+\qty{1000}{\hertz} con amplitud $0{,}84\,A$, el coeficiente vecino
+(\qty{1015.6}{\hertz}) recibe $0{,}40\,A$ y los demás no se anulan
+(tabla~\ref{tab:fuga}).
+
+\begin{table}[H]
+\centering
+\caption{Amplitud de un solo lado, ecuación~\eqref{eq:amplitud}, alrededor
+del pico para una senoidal de $A = 0{,}5$ cuantizada a q15, con $f_s =
+\qty{8}{\kilo\sps}$ y $N = 512$ (calculada con la DFT de la
+ecuación~\eqref{eq:dft}).}
+\label{tab:fuga}
+\begin{tabular}{@{}r r r r@{}}
+\toprule
+\textbf{$k$} & \textbf{$f_k$ [Hz]} & \textbf{$A[k]$ con $f_0 = \qty{1000}{\hertz}$} &
+\textbf{$A[k]$ con $f_0 = \qty{1005}{\hertz}$}\\
+\midrule
+62 & \num{968.75}   & \num{0.0000} & \num{0.0575}\\
+63 & \num{984.375}  & \num{0.0000} & \num{0.1014}\\
+64 & \num{1000}     & \num{0.5000} & \num{0.4195}\\
+65 & \num{1015.625} & \num{0.0000} & \num{0.1980}\\
+66 & \num{1031.25}  & \num{0.0000} & \num{0.0804}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La implementación no aplica ninguna ventana además de la rectangular, para
+que el espectro enviado sea exactamente la FFT del buffer. Una ventana de
+Hann (\texttt{arm\_hanning\_f32()} en CMSIS-DSP) bajaría los lóbulos
+laterales a \qty{-31.5}{\deci\bel} y el error de amplitud máximo a
+\qty{1.42}{\deci\bel}, a cambio de duplicar el ancho del lóbulo principal
+(sección~\ref{sec:mejoras}).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Diseño de la aplicación}\label{sec:diseno}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Arquitectura general}
+
+La figura~\ref{fig:bloques} muestra las partes de la aplicación. La
+adquisición es la del Laboratorio~1: el CTIMER0 dispara cada conversión a
+través del INPUTMUX y el LPADC0 deja el resultado en su FIFO. La rutina de
+interrupción del ADC lo convierte a q15 y lo guarda en \texttt{buffer\_in}
+hasta completar un bloque de $N$ muestras; entonces levanta la bandera
+\texttt{buffer\_listo}. El lazo principal ve la bandera, convierte el bloque
+a punto flotante en \texttt{buffer\_out}, le aplica la FFT (o no, en
+\emph{bypass}) y lo transmite por la UART al puerto COM virtual del
+MCU-Link, donde lo recibe la GUI de MATLAB. Las teclas y el touchpad sólo
+modifican la configuración: SW3 la frecuencia de muestreo (match del
+CTIMER0 y color del LED), SW2 el modo y el touchpad el tamaño $N$ del
+próximo bloque.
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[x=1cm,y=1cm, every node/.append style={font=\footnotesize}]
+  \tikzset{bloque/.append style={minimum width=2.3cm}}
+  % --- Fila 1: adquisicion ---
+  \node[externo] (gen)  at (0,0)      {Generador\\de señal};
+  \node[hw]      (adc)  at (3.4,0)    {\periferico{LPADC0}\\canal A0, \qty{16}{\bit}};
+  \node[sw]      (isr)  at (6.8,0)    {ISR\\del ADC0};
+  \node[mem]     (bin)  at (10.2,0)   {\texttt{buffer\_in}\\$N \times$ q15};
+%
+  % --- Fila 2 ---
+  \node[hw]      (mux)  at (3.4,-2.4)  {\periferico{INPUTMUX}};
+  \node[sw]      (proc) at (10.2,-2.4) {\texttt{procesar\_buffer()}\\FFT o \emph{bypass}};
+  \node[mem]     (tab)  at (13.8,-2.4) {Tablas CMSIS\\$W_N^k$ y reordenamiento\\(flash)};
+%
+  % --- Fila 3 ---
+  \node[externo] (p19)  at (0,-4.8)    {\pin{P0\_19}\\punto de prueba};
+  \node[hw]      (tmr)  at (3.4,-4.8)  {\periferico{CTIMER0}\\match 3};
+  \node[sw]      (isk)  at (6.8,-4.8)  {ISR de\\teclas};
+  \node[mem]     (bout) at (10.2,-4.8) {\texttt{buffer\_out}\\$2N \times$ float32};
+  \node[sw]      (lazo) at (13.8,-4.8) {Lazo principal\\(\texttt{main()})};
+%
+  % --- Fila 4 ---
+  \node[hw]      (led)  at (3.4,-7.2)  {LED RGB};
+  \node[hw]      (sw)   at (6.8,-7.2)  {Teclas SW3 ($f_s$)\\y SW2 (modo)};
+  \node[hw]      (uart) at (10.2,-7.2) {\periferico{LP\_FLEXCOMM4}\\LPUART, \num{115200}~bit/s};
+  \node[hw]      (tsi)  at (13.8,-7.2) {Touchpad E1\\\periferico{TSI0}};
+%
+  % --- Fila 5 ---
+  \node[externo] (pc)   at (10.2,-9.6) {PC\\GUI de MATLAB};
+%
+  % --- Camino de los datos ---
+  \draw[senal] (gen)  -- node[etiqueta,above]{$x(t)$} (adc);
+  \draw[senal] (adc)  -- node[etiqueta,above]{FIFO0} (isr);
+  \draw[senal] (isr)  -- node[etiqueta,above]{$x[n]$} (bin);
+  \draw[senal] (bin)  -- node[etiqueta,right]{\texttt{buffer\_listo}} (proc);
+  \draw[senal] (proc) -- node[etiqueta,right]{$X[k]$} (bout);
+  \draw[senal] (bout) -- node[etiqueta,right]{trama ASCII} (uart);
+  \draw[senal] (uart) -- node[etiqueta,right]{USB (COM virtual)} (pc);
+%
+  % --- Disparo y tablas ---
+  \draw[flecha] (tab) -- (proc);
+  \draw[flecha] (tmr) -- node[etiqueta,right]{MAT3 (toggle)} (mux);
+  \draw[flecha] (mux) -- node[etiqueta,right]{trigger 0} (adc);
+  \draw[flecha] (tmr) -- (p19);
+%
+  % --- Control ---
+  \draw[control] (sw)   -- node[etiqueta,right]{flanco $\downarrow$} (isk);
+  \draw[control] (isk)  -- node[etiqueta,above]{nuevo MR} (tmr);
+  \draw[control] (isk)  -- node[etiqueta,above,sloped]{color} (led);
+  \draw[control] (isk)  -- node[etiqueta,right,pos=0.3]{\texttt{cambio\_fs},\\modo} (isr);
+  \draw[control] (tsi)  -- node[etiqueta,right]{toque} (lazo);
+  \draw[control] (lazo) -- node[etiqueta,above,sloped]{llama} (proc);
+  \draw[control] (lazo) -- node[etiqueta,below,sloped]{envía} (uart);
+  \draw[control] (lazo.east) -- ++(0.7,0) |- node[etiqueta,above,pos=0.75]{$N$
+                 (\texttt{BUFFER\_SIZE})} (bin.east);
+%
+  % --- Leyenda ---
+  \begin{scope}[shift={(1.6,-11.0)},every node/.style={font=\scriptsize}]
+    \foreach \c/\t [count=\k from 0] in {bloquehw/Periférico,bloquesw/Firmware,
+                                          bloquemem/Memoria}
+      {\fill[\c,draw=azulunc] (2.4*\k,0) rectangle ++(0.35,0.25);
+       \node[right] at (2.4*\k+0.4,0.125) {\t};}
+    \draw[grismedio,dashed] (7.2,0) rectangle ++(0.35,0.25);
+    \node[right] at (7.6,0.125) {Externo};
+  \end{scope}
+\end{tikzpicture}}
+\caption{Diagrama de bloques de la aplicación. Trazo continuo azul: datos;
+negro: disparo y tablas; punteado: control.}
+\label{fig:bloques}
+\end{figure}
+%
+\subsection{Velocidades de muestreo}
+
+La generación de las velocidades no cambió respecto del Laboratorio 1: con el
+timer contando a \ftimer{}, reiniciándose en el match y con la salida en
+toggle,
+\begin{equation}
+  f_s = \frac{f_{\text{timer}}}{2\,(\text{MR} + 1)}.
+  \label{eq:fs}
+\end{equation}
+La tabla~\ref{tab:fs} repite los valores de MR (arreglo \texttt{sample\_vel})
+y el color del LED de cada estado. La $f_s$ real es la que el firmware envía
+en la cabecera de cada trama (sección~\ref{sec:protocolo}), así que el eje
+de frecuencias de la GUI se construye con ella y no con la nominal.
+
+\begin{table}[H]
+\centering
+\caption{Velocidades de muestreo, valor de match programado y color del LED.}
+\label{tab:fs}
+\begin{tablamuestreo}
+  \filafs{8000} {9374}{Verde}   {0}{1}{0}
+  \filafs{16000}{4687}{Amarillo}{1}{1}{0}
+  \filafs{22000}{3408}{Azul}    {0}{0}{1}
+  \filafs{44000}{1704}{Rojo}    {1}{0}{0}
+  \filafs{48000}{1562}{Blanco}  {1}{1}{1}
+\end{tablamuestreo}
+\end{table}
+
+\subsection{Resolución y duración de la ventana}\label{sec:resolucion}
+
+Con las cinco velocidades y los tres tamaños hay 15 combinaciones. La
+tabla~\ref{tab:resolucion} aplica la ecuación~\eqref{eq:resolucion} a cada
+una, con la $f_s$ real.
+
+\begin{table}[H]
+\centering
+\caption{Resolución en frecuencia $\Delta f = f_s/N$ y duración de la ventana
+$T_v = N/f_s$ para cada combinación.}
+\label{tab:resolucion}
+\begin{tabular}{@{}l r r r r r r@{}}
+\toprule
+& \multicolumn{3}{c}{\textbf{$\Delta f$ [Hz]}} &
+  \multicolumn{3}{c}{\textbf{$T_v$ [ms]}}\\
+\cmidrule(lr){2-4}\cmidrule(l){5-7}
+\textbf{$f_s$} & \textbf{512} & \textbf{1024} & \textbf{2048} &
+\textbf{512} & \textbf{1024} & \textbf{2048}\\
+\midrule
+\filaresol{8000} {9374}
+\filaresol{16000}{4687}
+\filaresol{22000}{3408}
+\filaresol{44000}{1704}
+\filaresol{48000}{1562}
+\bottomrule
+\end{tabular}
+\end{table}
+
+Se observan tres cosas:
+\begin{itemize}
+  \item A $N$ fijo, aumentar $f_s$ amplía el rango analizado (hasta
+        $f_s/2$) pero empeora la resolución en la misma proporción: a
+        \qty{48}{\kilo\sps} y $N = 512$ los coeficientes están separados
+        casi \qty{94}{\hertz}, seis veces más que a \qty{8}{\kilo\sps}.
+  \item A $f_s$ fija, duplicar $N$ duplica la duración de la ventana y
+        divide por dos $\Delta f$. También duplica la memoria, algo más que
+        duplica el cálculo (tabla~\ref{tab:complejidad}) y duplica el
+        tiempo de transmisión (sección~\ref{sec:tiempos}).
+  \item Combinaciones distintas con el mismo cociente $f_s/N$ dan la misma
+        resolución: \qty{8}{\kilo\sps} con 512 muestras y
+        \qty{16}{\kilo\sps} con 1024 tienen ambas $\Delta f \approx
+        \qty{15.6}{\hertz}$ y una ventana de \qty{64}{\milli\second}; la
+        segunda cubre el doble de ancho de banda con el doble de
+        coeficientes.
+\end{itemize}
+
+\subsection{Máquina de estados}
+
+La configuración se modela con tres variables de estado independientes
+(figura~\ref{fig:estados}):
+
+\begin{itemize}[nosep]
+  \item \texttt{state\_counter}: índice de velocidad (E0 a E4). Avanza en
+        forma circular con SW3; cada cambio reprograma el match del CTIMER0,
+        cambia el color del LED y descarta el bloque en curso.
+  \item \texttt{modo\_seleccionado}: \emph{bypass} (M0) o FFT (M1). Alterna
+        con SW2.
+  \item \texttt{BUFFER\_SIZE}: tamaño de la ventana (N0 a N2: 512, 1024 y
+        2048). Avanza en forma circular con cada toque del touchpad.
+\end{itemize}
+
+Las tres actúan en cualquier estado. Al reiniciar la placa el sistema
+arranca en E0 (\qty{8}{\kilo\sps}), en \emph{bypass} y con $N = 512$. Ninguna
+de las tres se aplica a mitad de un bloque: la rutina del ADC las copia al
+comenzar cada bloque (sección~\ref{sec:bloques}).
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}
+  % --- Anillo de velocidades ---
+  \foreach \i/\f/\r/\g/\b in {0/8/0/1/0, 1/16/1/1/0, 2/22/0/0/1,
+                                3/44/1/0/0, 4/48/1/1/1} {
+    \node[estado] (e\i) at ({90-72*\i}:2.5)
+      {\textbf{E\i}\\[-1pt]{\footnotesize\f\,kS/s}\\[1pt]\led{\r}{\g}{\b}};
+  }
+  \foreach \i/\j in {0/1,1/2,2/3,3/4,4/0}
+    \draw[flecha] (e\i) to[bend left=18] node[etiqueta,sloped,above]{SW3} (e\j);
+  \node[etiqueta] at (0,0) {avance\\circular};
+  \draw[flecha] (-2.2,3.3) node[left,etiqueta]{reset} -- (e0);
+%
+  % --- Modo ---
+  \begin{scope}[xshift=6.3cm]
+    \node[estado] (m0) at (0,1.5)  {\textbf{M0}\\[-1pt]{\scriptsize\emph{bypass}}};
+    \node[estado] (m1) at (0,-1.5) {\textbf{M1}\\[-1pt]{\scriptsize FFT}};
+    \draw[flecha] (m0) to[bend left=35] node[etiqueta,right]{SW2} (m1);
+    \draw[flecha] (m1) to[bend left=35] node[etiqueta,left]{SW2} (m0);
+    \draw[flecha] (-1.4,3.0) node[left,etiqueta]{reset} -- (m0);
+  \end{scope}
+%
+  % --- Tamano de la ventana ---
+  \begin{scope}[xshift=11.4cm]
+    \foreach \i/\n in {0/512, 1/1024, 2/2048} {
+      \node[estado] (n\i) at ({90-120*\i}:2.0)
+        {\textbf{N\i}\\[-1pt]{\footnotesize\n}};
+    }
+    \foreach \i/\j in {0/1,1/2,2/0}
+      \draw[flecha] (n\i) to[bend left=18] node[etiqueta,sloped,above]{toque} (n\j);
+    \node[etiqueta] at (0,0) {avance\\circular};
+    \draw[flecha] (-2.0,2.9) node[left,etiqueta]{reset} -- (n0);
+  \end{scope}
+\end{tikzpicture}}
+\caption{Izquierda: selección circular de la velocidad de muestreo con SW3 y
+color del LED en cada estado. Centro: modo, alternado con SW2. Derecha:
+tamaño de la ventana, recorrido con el touchpad E1.}
+\label{fig:estados}
+\end{figure}
+%
+\subsection{Procesamiento por bloques}\label{sec:bloques}
+
+En el Laboratorio~2 cada muestra se procesaba en la misma interrupción en
+que llegaba. La FFT, en cambio, necesita las $N$ muestras de la ventana
+antes de calcular cualquier coeficiente, así que el procesamiento es por
+bloques y se divide entre dos contextos que se pasan el buffer con una
+bandera, \texttt{buffer\_listo} (figura~\ref{fig:linea-tiempo}):
+
+\begin{itemize}
+  \item \textbf{Rutina del ADC (productor).} Mientras
+        \texttt{buffer\_listo} es falso, guarda cada muestra en
+        \texttt{buffer\_in[i]} e incrementa $i$. Al llegar a $N$ pone $i$
+        en cero y \texttt{buffer\_listo} en 1. Mientras
+        \texttt{buffer\_listo} es verdadero, sigue leyendo la FIFO (para que
+        no se desborde) pero descarta las muestras: el bloque no se toca.
+  \item \textbf{Lazo principal (consumidor).} Cuando ve
+        \texttt{buffer\_listo} en 1, procesa y transmite el bloque, y recién
+        al terminar la pone en 0, lo que habilita la adquisición del
+        siguiente.
+\end{itemize}
+
+Como sólo un contexto escribe el buffer en cada momento, no hace falta
+duplicarlo ni deshabilitar interrupciones. El costo es que la adquisición
+queda en pausa durante el procesamiento y la transmisión: cada espectro es
+una \emph{instantánea} de $T_v$ segundos, y entre dos instantáneas se pierde
+el tiempo de transmisión.
+
+\begin{figure}[H]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[x=1cm,y=1cm, every node/.append style={font=\footnotesize}]
+  % --- Rotulos de las filas ---
+  \node[etiqueta,left] at (-0.1,2.2) {ISR del ADC};
+  \node[etiqueta,left] at (-0.1,1.1) {Lazo principal};
+  \node[etiqueta,left] at (-0.1,0.0) {\texttt{buffer\_listo}};
+%
+  % --- ISR del ADC ---
+  \draw[fill=bloquehw,draw=azulunc] (0,1.9) rectangle (2.6,2.5);
+  \node[etiqueta] at (1.3,2.2) {Bloque $k$: $N/f_s$};
+  \draw[fill=grisclaro,draw=grismedio] (2.6,1.9) rectangle (11.6,2.5);
+  \node[etiqueta] at (7.1,2.2) {Lee la FIFO y descarta las muestras};
+  \draw[fill=bloquehw,draw=azulunc] (11.6,1.9) rectangle (14.2,2.5);
+  \node[etiqueta] at (12.9,2.2) {Bloque $k+1$};
+%
+  % --- Lazo principal ---
+  \draw[fill=bloquesw,draw=azulunc] (2.6,0.8) rectangle (3.5,1.4);
+  \node[etiqueta] at (3.05,1.1) {FFT};
+  \draw[fill=bloquemem,draw=azulunc] (3.5,0.8) rectangle (11.6,1.4);
+  \node[etiqueta] at (7.55,1.1) {Transmisión por la UART: cabecera, $N$ filas y \texttt{END}};
+%
+  % --- Bandera ---
+  \draw[line width=0.9pt,draw=azulunc]
+       (0,-0.25) -- (2.6,-0.25) -- (2.6,0.25) -- (11.6,0.25) -- (11.6,-0.25)
+       -- (14.2,-0.25);
+%
+  % --- Eje de tiempo ---
+  \draw[flecha] (0,-0.8) -- (14.6,-0.8) node[right,etiqueta]{$t$};
+  \foreach \x in {2.6,11.6}
+    \draw[grismedio,dashed] (\x,-0.8) -- (\x,2.6);
+  \node[etiqueta,below] at (2.6,-0.8)  {fin del bloque $k$};
+  \node[etiqueta,below] at (11.6,-0.8) {fin de la transmisión};
+\end{tikzpicture}}
+\caption{Línea de tiempo de un bloque (sin escala: la transmisión dura entre
+16 y casi 100 veces más que la adquisición, tabla~\ref{tab:tiempos}).}
+\label{fig:linea-tiempo}
+\end{figure}
+%
+\paragraph{Configuración de cada bloque.} El tamaño, el modo y la $f_s$ se
+pueden cambiar en cualquier momento, incluso mientras se transmite. Para
+que el bloque sea coherente, la rutina del ADC copia
+\texttt{state\_counter}, \texttt{modo\_seleccionado} y
+\texttt{BUFFER\_SIZE} en \texttt{fs\_bloque}, \texttt{modo\_bloque} y
+\texttt{buffer\_size\_bloque} al guardar la primera muestra ($i = 0$), y
+desde ahí usa sólo las copias. El lazo principal también usa sólo las
+copias para procesar y armar la cabecera, así que la FFT, la cantidad de
+filas y la $f_s$ informada corresponden siempre a las muestras del bloque,
+aunque el usuario haya cambiado la selección en el medio. Un cambio de modo
+o de tamaño se ve recién en el bloque siguiente.
+
+\paragraph{Muestras consecutivas.} La FFT supone que las $N$ muestras son
+consecutivas y equiespaciadas a una única $f_s$. Dos situaciones romperían
+esa hipótesis, y en las dos la rutina del ADC descarta el bloque parcial
+(pone $i$ en cero) y vacía la FIFO:
+\begin{itemize}[nosep]
+  \item \textbf{Cambio de $f_s$}: la rutina de SW3 pone \texttt{cambio\_fs}
+        en 1. Sin el descarte, un bloque podría tener una parte muestreada a
+        una velocidad y otra a otra, y su espectro mezclaría dos escalas de
+        frecuencia.
+  \item \textbf{Pérdida de muestras}: si el LPADC señala desborde de la FIFO
+        (\texttt{kLPADC\_ResultFIFO0}\allowbreak\texttt{OverflowFlag}) o un disparo que no pudo
+        atender (\texttt{kLPADC\_Trigger}\allowbreak\texttt{ExceptionFlag}), faltan muestras y el
+        bloque ya no es una ventana continua.
+\end{itemize}
+\texttt{cambio\_fs} arranca en 1, así que la primera interrupción también
+vacía la FIFO de cualquier conversión previa a la inicialización.
+
+\subsection{Formato de los datos}\label{sec:formato}
+
+El LPADC0 trabaja en \qty{16}{\bit}, igual que en el Laboratorio~2, y la
+rutina del ADC centra el resultado restando la mitad de escala:
+\begin{equation}
+  x_{q15}[n] = v - 32768 \in [-32768,\; 32767],
+\end{equation}
+que es directamente un \texttt{q15\_t}. El lazo principal lo pasa a punto
+flotante normalizado al copiarlo a \texttt{buffer\_out}, con la parte
+imaginaria en cero:
+\begin{equation}
+  \mathrm{Re}\,\{x[n]\} = \frac{x_{q15}[n]}{32768} \in [-1,\; 1),
+  \qquad \mathrm{Im}\,\{x[n]\} = 0.
+\end{equation}
+Así la amplitud 1 corresponde a la mitad del rango del ADC, y la amplitud de
+la ecuación~\eqref{eq:amplitud} se lee en las mismas unidades.
+
+Se eligió punto flotante en lugar de \texttt{arm\_cfft\_q15()} porque el
+Cortex-M33 del MCXN947 tiene FPU de simple precisión (el proyecto compila
+con \texttt{-mfpu=fpv5-sp-d16}, ABI \emph{hard}) y porque la FFT en punto
+fijo tiene que escalar: como cada etapa puede duplicar la magnitud,
+\texttt{arm\_cfft\_q15()} divide por 2 en las etapas para no desbordar y
+entrega el resultado dividido por $N$, perdiendo $\log_2 N$ bits (11 bits de
+15 para $N = 2048$). Con \texttt{float32\_t}, de 24 bits de mantisa y
+exponente propio, el resultado sin normalizar (hasta $N/2 = 1024$ veces la
+amplitud de entrada) se representa sin pérdida apreciable y el piso de ruido
+queda determinado por el ADC, no por la aritmética.
+
+\subsection{Protocolo de comunicación}\label{sec:protocolo}
+
+Cada bloque se envía como una trama de texto de $N+2$ líneas terminadas en
+\verb|\r\n| (tabla~\ref{tab:trama}).
+
+\begin{table}[H]
+\centering
+\caption{Formato de una trama.}
+\label{tab:trama}
+\small
+\begin{tabular}{@{}l l p{6.2cm}@{}}
+\toprule
+\textbf{Línea} & \textbf{Formato} & \textbf{Contenido}\\
+\midrule
+Cabecera & \texttt{TP3,<seq>,<modo>,<N>,<fs\_mHz>}
+         & Número de trama, modo (0: \emph{bypass}, 1: FFT), tamaño $N$ y
+           $f_s$ real del bloque en milihertz\\
+Filas $k = 0, \dots, N-1$ & \texttt{<k>,<RE>,<IM>}
+         & Índice y bits IEEE-754 de la parte real e imaginaria, en
+           hexadecimal de 8 dígitos\\
+Fin      & \texttt{END} & Fin de la trama\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Por ejemplo, una trama FFT de 512 puntos a \qty{8}{\kilo\sps} empieza y
+termina así (los valores de las filas son ilustrativos):
+
+\begin{lstlisting}[numbers=none,caption={Ejemplo de trama.},label={lst:trama}]
+TP3,17,1,512,8000000
+0,3C4985F0,00000000
+1,BE800000,3F000000
+...
+64,43800000,C1480000
+...
+511,BE800000,BF000000
+END
+\end{lstlisting}
+
+Las decisiones del formato son:
+\begin{itemize}
+  \item \textbf{La $f_s$ viaja en la cabecera}, calculada con la
+        ecuación~\eqref{eq:fs} a partir del MR del bloque y en milihertz,
+        para que sea un entero exacto con tres decimales
+        (\num{15998293}~mHz en E1). El cálculo se hace en 64 bits, porque
+        $1000 \cdot f_{\text{timer}} = \num{1.5e11}$ no entra en 32. La GUI
+        no necesita conocer la tabla de velocidades.
+  \item \textbf{Los valores se envían como los bits del \texttt{float} en
+        hexadecimal}, no en decimal. El proyecto usa la biblioteca Redlib
+        con \texttt{printf} sólo de enteros (\texttt{CR\_INTEGER\_PRINTF},
+        \texttt{PRINTF\_FLOAT\_ENABLE=0}), así que \texttt{snprintf} no
+        puede formatear flotantes; copiar los bits a un \texttt{uint32\_t}
+        con \texttt{memcpy} e imprimirlo con \verb|%08lX| no necesita
+        soporte de punto flotante, transmite el valor exacto sin redondeo y
+        da campos de ancho fijo, fáciles de validar. En MATLAB se recupera
+        con \texttt{typecast(uint32(hex2dec(...)),'single')}.
+  \item \textbf{Cada fila lleva su índice}, y la trama tiene cabecera y
+        cierre. La GUI verifica que los índices sean consecutivos y que la
+        trama termine con \texttt{END}; si una línea se pierde o llega
+        corrupta, descarta la trama y se vuelve a sincronizar con la
+        siguiente cabecera.
+  \item \textbf{Se envía el espectro completo} ($N$ coeficientes, incluida la
+        mitad conjugada), que es exactamente el contenido de
+        \texttt{buffer\_out}. En \emph{bypass} el mismo formato lleva las
+        $N$ muestras de la ventana, con la parte imaginaria en cero.
+\end{itemize}
+
+La UART se escribe con \texttt{LPUART\_WriteBlocking()}, que espera a que
+haya lugar en la FIFO de transmisión. Como esa espera ocurre en el lazo
+principal y no en una interrupción, no afecta a la adquisición.
+
+\subsection{Restricción de tiempo}\label{sec:tiempos}
+
+A diferencia del Laboratorio 2, aquí no hay que terminar el cálculo antes
+de la muestra siguiente: el bloque está protegido por
+\texttt{buffer\_listo} y el lazo principal puede tardar lo que necesite. Lo
+que se ve afectado es el período con que se refresca el espectro,
+\begin{equation}
+  T_{\text{bloque}} = T_v + T_{\text{FFT}} + T_{\text{tx}},
+  \qquad
+  T_{\text{tx}} = \frac{\text{bytes de la trama} \cdot 10}{\num{115200}},
+  \label{eq:tbloque}
+\end{equation}
+donde cada byte ocupa 10 bits en la línea (inicio, 8 datos y parada). Una
+fila tiene entre 21 y 24 bytes según la cantidad de dígitos del índice. La
+tabla~\ref{tab:tiempos} aplica la ecuación~\eqref{eq:tbloque} a la menor y a
+la mayor $f_s$, sin $T_{\text{FFT}}$.
+
+\begin{table}[H]
+\centering
+\caption{Bytes por trama, tiempo de transmisión a \num{115200}~bit/s, duración
+de la ventana y período de refresco del espectro.}
+\label{tab:tiempos}
+\begin{tabular}{@{}r r r r r r r@{}}
+\toprule
+& & & \multicolumn{2}{c}{\textbf{$T_v$ [ms]}} &
+      \multicolumn{2}{c}{\textbf{$T_{\text{bloque}}$ [s]}}\\
+\cmidrule(lr){4-5}\cmidrule(l){6-7}
+\textbf{$N$} & \textbf{Bytes} & \textbf{$T_{\text{tx}}$ [s]} &
+\textbf{\qty{8}{\kilo\sps}} & \textbf{\qty{48}{\kilo\sps}} &
+\textbf{\qty{8}{\kilo\sps}} & \textbf{\qty{48}{\kilo\sps}}\\
+\midrule
+\filatx{512} {11693}
+\filatx{1024}{23494}
+\filatx{2048}{48070}
+\bottomrule
+\end{tabular}
+\end{table}
+
+La transmisión domina: dura entre 16 y casi 100 veces la ventana, y el espectro se
+refresca aproximadamente una vez por segundo con $N = 512$ y una vez cada
+cuatro segundos con $N = 2048$, casi sin importar la $f_s$.
+
+El cálculo de la FFT es mucho más corto. Con la estimación habitual de
+$5\,N\log_2 N$ operaciones de punto flotante (cada mariposa radix-2: un
+producto complejo, cuatro productos y dos sumas, más dos sumas complejas),
+la FFT de \num{2048} puntos son unas \num{112640} operaciones, del orden de
+\qty{1}{\milli\second} a \qty{150}{\mega\hertz} aun contando los accesos a
+memoria y la compilación sin optimizar.
+
+\paragraph{¿Se podría transmitir en forma continua?} Para no perder
+muestras, cada trama tendría que enviarse en menos tiempo que $T_v$, es
+decir, a una tasa de $(\text{bytes por coeficiente}) \cdot f_s$. Con el
+formato actual (unos \num{23.5} bytes por coeficiente) eso es
+\qty{1.9}{\mega\bit\per\second} a \qty{8}{\kilo\sps} y
+\qty{11.3}{\mega\bit\per\second} a \qty{48}{\kilo\sps}. Incluso con el
+formato más compacto posible, en binario y sólo con los $N/2$ coeficientes
+no redundantes (8 bytes cada uno, 4 bytes por muestra de entrada), harían
+falta \qty{320}{\kilo\bit\per\second} y \qty{1.92}{\mega\bit\per\second}.
+Las dos cifras superan los \num{115200}~bit/s del enlace, así que el
+esquema de instantáneas no es una simplificación sino la única opción con
+este enlace. Para un análisis continuo habría que reducir lo que se
+transmite (por ejemplo, sólo el módulo de unos pocos coeficientes) o
+promediar varios espectros en la placa antes de enviar uno.
+
+\subsection{Uso de memoria}
+
+\texttt{buffer\_in} y \texttt{buffer\_out} se dimensionan una sola vez para
+el máximo, \texttt{BUFFER\_MAX\_SIZE} = \num{2048}, y los bloques
+más chicos usan sólo su parte inicial. \texttt{buffer\_in} ocupa
+4~KiB ($2048 \times 2$ bytes) y \texttt{buffer\_out}
+16~KiB ($2 \times 2048 \times 4$ bytes), unos
+20~KiB de RAM en total. La FFT trabaja en el lugar sobre
+\texttt{buffer\_out}, sin buffers auxiliares, y las tablas de la
+tabla~\ref{tab:tablas} están en flash. Que la entrada y la salida sean
+buffers distintos es lo que pide la consigna, y además permite conservar
+las muestras originales en \texttt{buffer\_in} aunque la FFT sobrescriba
+\texttt{buffer\_out}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Implementación}\label{sec:implementacion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+La lógica propia está en \archivo{source/TP3.c}; el resto del proyecto es
+código generado por Config Tools, drivers del SDK y CMSIS-DSP. Los scripts
+de MATLAB están en \archivo{TP3/matlab/}. El código completo está en el
+Anexo~\ref{sec:codigo}.
+
+\subsection{Constantes y variables globales}
+
+Los valores de match se mantienen en \texttt{sample\_vel}, igual que en los
+laboratorios anteriores. \texttt{BUFFER\_MAX\_SIZE} (\num{2048}) fija la
+capacidad de los buffers. \texttt{BUFFER\_SIZE} conserva el nombre de la
+constante del Laboratorio~2 (\texttt{\#define BUFFER\_SIZE 512}), pero ahora es una variable \texttt{volatile}
+que modifica el touchpad. Las variables que comparten las interrupciones y
+el lazo principal (\texttt{state\_counter}, \texttt{modo\_seleccionado},
+\texttt{BUFFER\_SIZE}, \texttt{buffer\_listo} y \texttt{cambio\_fs}) se
+declaran \texttt{volatile}. \texttt{fs\_bloque}, \texttt{modo\_bloque} y
+\texttt{buffer\_size\_bloque} son la configuración del bloque
+(sección~\ref{sec:bloques}): la escribe la rutina del ADC al comenzar un
+bloque y la lee el lazo principal sólo mientras \texttt{buffer\_listo} es
+verdadero. \texttt{pte\_fft} apunta a la instancia de CMSIS-DSP del tamaño
+activo. El estado del touchpad (\texttt{touch\_base},
+\texttt{touch\_tocado} y los demás \texttt{touch\_*}) y la base de tiempo
+\texttt{ms\_ticks} son los del Laboratorio~2.
+
+\subsection{Programa principal}
+
+\texttt{main()} inicializa pines y relojes, enciende el VREF
+(sección~\ref{sec:cambios-perif}) y recién después inicializa los
+periféricos generados por Config Tools (CTIMER0, LPADC0, GPIO0 y la UART).
+A continuación fija el color del LED para E0, configura el SysTick para
+interrumpir cada \qty{1}{\milli\second}, mide la base del touchpad
+(\texttt{init\_touch()}), envía la línea \texttt{TP3 boot} (que la GUI
+ignora) y entra en el lazo principal (figura~\ref{fig:flujo-lazo}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  \coordinate (izq) at (-3.8,0);
+  \coordinate (der) at (3.0,0);
+  \node[inicio] (m0) at (0,0) {\texttt{main()}};
+  \node[proceso, below=of m0] (m1)
+     {Pines, relojes, VREF y periféricos;\\SysTick de \qty{1}{\milli\second};
+      \texttt{init\_touch()}};
+  \node[proceso, below=of m1] (m2) {\texttt{touch\_actualizar()}};
+  \node[decision, below=0.6cm of m2] (m3) {¿\texttt{buffer\_listo}?};
+  \node[proceso, below=0.6cm of m3] (m4)
+     {\texttt{procesar\_buffer()}:\\q15 $\rightarrow$ float32;\\FFT si el bloque es FFT};
+  \node[proceso, below=of m4] (m5)
+     {\texttt{enviar\_buffer()}:\\cabecera, $N$ filas y \texttt{END}\\
+      (atiende el touchpad entre filas)};
+  \node[proceso, below=of m5] (m6) {\texttt{buffer\_listo} $\leftarrow 0$};
+  \draw[flecha] (m0) -- (m1);
+  \draw[flecha] (m1) -- (m2);
+  \draw[flecha] (m2) -- (m3);
+  \draw[flecha] (m3) -- node[etiqueta,right]{sí} (m4);
+  \draw[flecha] (m4) -- (m5);
+  \draw[flecha] (m5) -- (m6);
+  \draw[flecha] (m6.west) -- (m6.west -| izq) |- (m2.west);
+  \draw[flecha] (m3.east) -- node[etiqueta,above]{no} (m3.east -| der) |- (m2.east);
+\end{tikzpicture}
+\caption{Lazo principal: touchpad, procesamiento y transmisión.}
+\label{fig:flujo-lazo}
+\end{figure}
+
+\subsection{Rutina del ADC}
+
+El código~\ref{lst:isr} muestra el núcleo de la rutina del ADC y la
+figura~\ref{fig:flujo-adc} su diagrama de flujo. Primero se atiende el
+descarte por cambio de $f_s$ o pérdida de muestras; si no corresponde, se
+lee la conversión, se centra a q15 y, si el bloque no está protegido, se
+guarda.
+
+\begin{lstlisting}[caption={Adquisición de un bloque en \texttt{ADC0\_IRQHANDLER()} (\texttt{source/TP3.c}).},label={lst:isr}]
+if (cambio_fs ||
+    (status_flag & (kLPADC_ResultFIFO0OverflowFlag |
+                    kLPADC_TriggerExceptionFlag))) {
+    index_buffer = 0;                 /* descarta el bloque parcial */
+    cambio_fs = false;
+    while (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
+    }                                 /* vacia la FIFO */
+
+} else if (LPADC_GetConvResult(ADC0_PERIPHERAL, &result, 0)) {
+    q15_t muestra = (q15_t)((int32_t)result.convValue - 32768);
+
+    if (!buffer_listo) {
+        if (index_buffer == 0) {      /* configuracion de ESTE bloque */
+            fs_bloque = state_counter;
+            modo_bloque = modo_seleccionado;
+            buffer_size_bloque = BUFFER_SIZE;
+        }
+        buffer_in[index_buffer] = muestra;
+        index_buffer++;
+        if (index_buffer == buffer_size_bloque) {
+            index_buffer = 0;
+            buffer_listo = true;      /* entrega el bloque a main */
+        }
+    }
+}
+\end{lstlisting}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.4cm]
+  \coordinate (busder) at (7.6,0);
+  \coordinate (busizq) at (-3.9,0);
+  \node[inicio] (a0) at (0,0) {\texttt{ADC0\_IRQHandler}};
+  \node[proceso, below=of a0] (a1) {Leer y limpiar banderas\\de trigger y de estado};
+  \node[decision, below=of a1] (a2) {¿Cambio de $f_s$\\o desborde?};
+  \node[proceso] (a3) at ([xshift=5cm]a2) {$i \leftarrow 0$; \texttt{cambio\_fs} $\leftarrow 0$\\vaciar la FIFO0};
+  \node[decision, below=0.6cm of a2] (a4) {¿Hay resultado\\en la FIFO0?};
+  \node[proceso, below=0.6cm of a4] (a5) {$x \leftarrow \mathrm{res} - 32768$};
+  \node[decision, below=0.6cm of a5] (a6) {¿\texttt{buffer\_listo}?};
+  \node[decision, below=0.6cm of a6] (a7) {¿$i = 0$?};
+  \node[proceso] (a8) at ([xshift=5cm]a7) {Copiar $f_s$, modo y $N$\\del bloque};
+  \node[proceso, below=0.6cm of a7] (a9) {\texttt{buffer\_in}$[i] \leftarrow x$\\$i \leftarrow i + 1$};
+  \node[decision, below=0.6cm of a9] (a10) {¿$i = N_{\text{bloque}}$?};
+  \node[proceso] (a11) at ([xshift=5cm]a10) {$i \leftarrow 0$\\\texttt{buffer\_listo} $\leftarrow 1$};
+  \node[inicio, below=0.7cm of a10] (a12) {Retorno};
+
+  \draw[flecha] (a0) -- (a1);
+  \draw[flecha] (a1) -- (a2);
+  \draw[flecha] (a2) -- node[etiqueta,above]{sí} (a3);
+  \draw[flecha] (a2) -- node[etiqueta,right]{no} (a4);
+  \draw[flecha] (a4) -- node[etiqueta,right]{sí} (a5);
+  \draw[flecha] (a5) -- (a6);
+  \draw[flecha] (a6) -- node[etiqueta,right]{no} (a7);
+  \draw[flecha] (a7) -- node[etiqueta,above]{sí} (a8);
+  \draw[flecha] (a8) |- (a9);
+  \draw[flecha] (a7) -- node[etiqueta,right]{no} (a9);
+  \draw[flecha] (a9) -- (a10);
+  \draw[flecha] (a10) -- node[etiqueta,above]{sí} (a11);
+  \draw[flecha] (a10) -- node[etiqueta,right]{no} (a12);
+  % Salidas hacia el retorno por la derecha
+  \draw[flecha] (a3.east) -- (a3.east -| busder) |- (a12.east);
+  \draw (a11.east) -- (a11.east -| busder);
+  % Salidas hacia el retorno por la izquierda
+  \draw[flecha] (a4.west) -- node[etiqueta,above]{no} (a4.west -| busizq) |- (a12.west);
+  \draw (a6.west) -- node[etiqueta,above]{sí} (a6.west -| busizq);
+\end{tikzpicture}
+\caption{Diagrama de flujo de la rutina de fin de conversión del ADC. Con
+\texttt{buffer\_listo} en 1 la muestra se lee (la FIFO no se llena) pero se
+descarta.}
+\label{fig:flujo-adc}
+\end{figure}
+
+\subsection{Procesamiento del bloque}
+
+\texttt{procesar\_buffer()} (código~\ref{lst:proc}) convierte el bloque a
+complejo en punto flotante y, si el bloque se adquirió en modo FFT, elige
+la instancia de CMSIS-DSP del tamaño del bloque y calcula la transformada
+en el lugar. \texttt{init\_fft()} conserva el nombre de la versión inicial,
+en la que el tamaño era una constante de compilación y la instancia se
+elegía una sola vez con \texttt{\#if}; ahora se llama en cada bloque y elige
+con \texttt{buffer\_size\_bloque}, el tamaño con que se adquirió, y no con
+\texttt{BUFFER\_SIZE}, que el touchpad puede haber cambiado mientras tanto.
+Elegir la instancia no cuesta nada: es asignar un puntero a una estructura
+constante.
+
+\begin{lstlisting}[caption={Selección de la instancia y cálculo de la FFT (\texttt{source/TP3.c}).},label={lst:proc}]
+void init_fft(void) {
+    switch (buffer_size_bloque) {
+        case 512U:  pte_fft = &arm_cfft_sR_f32_len512;  break;
+        case 1024U: pte_fft = &arm_cfft_sR_f32_len1024; break;
+        case 2048U: pte_fft = &arm_cfft_sR_f32_len2048; break;
+    }
+}
+
+void procesar_buffer(void) {
+    for (uint16_t i = 0; i < buffer_size_bloque; i++) {
+        buffer_out[2*i]   = (float32_t)buffer_in[i] / 32768.0f;  /* Re */
+        buffer_out[2*i+1] = 0.0f;                                 /* Im */
+    }
+    if (modo_bloque == MODO_FFT) {
+        init_fft();
+        arm_cfft_f32(pte_fft, buffer_out, 0, 1);  /* directa, orden natural */
+    }
+}
+\end{lstlisting}
+
+En \emph{bypass} la función sólo hace la copia: el buffer de salida es
+distinto del de entrada, como pide la consigna, y contiene las muestras sin
+transformar.
+
+\subsection{Transmisión}
+
+\texttt{enviar\_buffer()} (código~\ref{lst:tx}) arma la cabecera con la
+configuración del bloque y envía una fila por coeficiente. Entre fila y
+fila llama a \texttt{touch\_actualizar()}: la transmisión de un bloque de
+\num{2048} puntos tarda más de cuatro segundos
+(tabla~\ref{tab:tiempos}), y sin esa llamada el touchpad no respondería
+durante ese tiempo. Como el touchpad sólo cambia \texttt{BUFFER\_SIZE}, la
+trama en curso no se altera.
+
+\begin{lstlisting}[caption={Armado y envío de la trama en \texttt{enviar\_buffer()} (\texttt{source/TP3.c}).},label={lst:tx}]
+uint32_t fs_millihz =
+    (uint32_t)((1000ULL * CTIMER0_TICK_FREQ) /
+    (2ULL * (CTIMER0_config.prescale + 1ULL) *
+     (sample_vel[fs_bloque] + 1ULL)));
+
+snprintf(linea, sizeof(linea), "TP3,%lu,%u,%u,%lu\r\n",
+         (unsigned long)++numero_bloque, (unsigned)modo_bloque,
+         (unsigned)buffer_size_bloque, (unsigned long)fs_millihz);
+if (!enviar_texto_uart(linea)) return;
+
+for (uint16_t i = 0; i < buffer_size_bloque; i++) {
+    uint32_t real, imag;
+    memcpy(&real, &buffer_out[2*i],   sizeof(real));  /* bits del float */
+    memcpy(&imag, &buffer_out[2*i+1], sizeof(imag));
+    snprintf(linea, sizeof(linea), "%u,%08lX,%08lX\r\n", (unsigned)i,
+             (unsigned long)real, (unsigned long)imag);
+    if (!enviar_texto_uart(linea)) return;
+    touch_actualizar(ms_ticks);     /* el touchpad no espera a END */
+}
+(void)enviar_texto_uart("END\r\n");
+\end{lstlisting}
+
+Se usa \texttt{memcpy} en lugar de un \emph{cast} de punteros
+(\texttt{*(uint32\_t *)\&f}) porque reinterpretar un \texttt{float} a
+través de un puntero a entero viola las reglas de \emph{aliasing} de C y
+el compilador podría optimizarlo de forma incorrecta; \texttt{memcpy} es la
+forma portable y, para 4 bytes, el compilador la reduce a una sola
+transferencia.
+
+\subsection{Rutinas de las teclas}
+
+La rutina de SW3 avanza \texttt{state\_counter} en forma circular,
+reprograma el CTIMER0 con \texttt{setup\_new\_match()} (detiene el timer,
+carga el nuevo match, lo reinicia y lo arranca, como en el Laboratorio~1),
+actualiza el color del LED con \texttt{set\_state()} y pone
+\texttt{cambio\_fs} en 1. La rutina de SW2 sólo alterna
+\texttt{modo\_seleccionado}. Ninguna toca los buffers: el efecto se aplica
+en la rutina del ADC al comenzar el bloque siguiente
+(figura~\ref{fig:flujo-teclas}).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.4cm]
+  % ---------------- ISR de SW3 ----------------
+  \node[inicio] (b0) {\texttt{GPIO0\_INT\_0} (SW3)};
+  \node[proceso, below=of b0] (b1) {\texttt{state\_counter} $\leftarrow$\\(\texttt{state\_counter}+1) mod 5};
+  \node[proceso, below=of b1] (b2) {\texttt{setup\_new\_match}\\(\texttt{sample\_vel[state]})};
+  \node[proceso, below=of b2] (b3) {\texttt{set\_state()}: color del LED};
+  \node[proceso, below=of b3] (b4) {\texttt{cambio\_fs} $\leftarrow$ 1};
+  \node[proceso, below=of b4] (b5) {Limpiar bandera};
+  \draw[flecha] (b0) -- (b1);
+  \draw[flecha] (b1) -- (b2);
+  \draw[flecha] (b2) -- (b3);
+  \draw[flecha] (b3) -- (b4);
+  \draw[flecha] (b4) -- (b5);
+
+  % ---------------- ISR de SW2 ----------------
+  \begin{scope}[xshift=6.5cm]
+    \node[inicio] (c0) {\texttt{GPIO0\_INT\_1} (SW2)};
+    \node[proceso, below=of c0] (c1) {\texttt{modo\_seleccionado} $\leftarrow$\\FFT si era \emph{bypass},\\\emph{bypass} si era FFT};
+    \node[proceso, below=of c1] (c2) {Limpiar bandera};
+    \draw[flecha] (c0) -- (c1);
+    \draw[flecha] (c1) -- (c2);
+  \end{scope}
+\end{tikzpicture}
+\caption{Diagramas de flujo de las rutinas de las teclas. Izquierda: cambio
+de velocidad (SW3). Derecha: cambio de modo (SW2).}
+\label{fig:flujo-teclas}
+\end{figure}
+
+\subsection{Touchpad}
+
+El touchpad se lee exactamente como en el Laboratorio~2, desde el lazo
+principal y sin interrupciones: al arrancar, \texttt{init\_touch()} configura
+el TSI0 en modo \emph{self-cap} con disparo por software y mide la base como
+el promedio de 16 barridos sin tocar (por eso no hay que tocar el touchpad
+durante el reset). Después, \texttt{touch\_actualizar()} dispara un barrido
+cada \qty{10}{\milli\second} y consulta si terminó en las vueltas
+siguientes, sin esperar; si un barrido no termina en
+\qty{50}{\milli\second}, el touchpad se desactiva y el resto del programa
+sigue funcionando. Una lectura cuenta como toque si está más de 20 cuentas
+por debajo de la base y como liberación si vuelve a quedar a menos de 10
+(histéresis), y el cambio se acepta con 3 lecturas seguidas (antirrebote de
+unos \qty{30}{\milli\second}). Sólo el paso de \emph{sin tocar} a
+\emph{tocado} cuenta como toque, así que mantener el dedo apoyado no avanza
+varios tamaños.
+
+Lo único que cambió es la acción: cada toque nuevo avanza
+\texttt{BUFFER\_SIZE} en forma circular, 512 $\rightarrow$ 1024
+$\rightarrow$ 2048 $\rightarrow$ 512. El valor se aplica al comenzar el
+próximo bloque. En el TP3 se quitó el aviso por \texttt{PRINTF} cuando el
+touchpad no responde, porque la UART transporta el protocolo y un texto
+intercalado rompería una trama.
+
+\subsection{Aplicación de MATLAB}\label{sec:matlab}
+
+En \archivo{TP3/matlab/} hay tres scripts:
+
+\begin{itemize}
+  \item \archivo{recibir_tp3.m}\texttt{(puerto, baud)} es la GUI. Abre el
+        puerto con \texttt{serialport} (\num{115200}~bit/s por defecto) y
+        terminador \verb|CR/LF|, y en un lazo que dura mientras la ventana
+        esté abierta: busca una línea que empiece con \texttt{TP3,}, valida
+        la cabecera ($N \in \{512, 1024, 2048\}$, modo 0 o 1, $f_s > 0$),
+        lee las $N$ filas verificando con una expresión regular el formato
+        y que el índice sea el esperado, decodifica los flotantes y
+        comprueba el \texttt{END}. En modo FFT dibuja el espectro de un solo
+        lado de la ecuación~\eqref{eq:amplitud} entre 0 y $f_s/2$, con el eje
+        en hertz construido con la $f_s$ de la cabecera; en \emph{bypass}
+        dibuja las muestras contra el tiempo. El título muestra el número
+        de trama, el modo, $N$ y $f_s$. Una trama con errores genera una
+        advertencia y se descarta, sin cerrar la GUI.
+  \item \archivo{diagnosticar_tp3.m} captura una sola trama, la guarda en
+        \archivo{.mat} y \archivo{.txt}, e informa el rango de la parte real
+        y la imaginaria, la cantidad de valores no nulos y no finitos, los
+        primeros datos en hexadecimal y en decimal y, en modo FFT, la
+        componente continua y el pico principal (frecuencia y amplitud). Se
+        usó para depurar el enlace y para tomar los valores numéricos de la
+        sección~\ref{sec:verificacion}.
+  \item \archivo{explorar_fft_tp3.m} es una referencia en la PC: genera una
+        senoidal, la cuantiza a q15 como el ADC, calcula su FFT con
+        \texttt{fft} y la grafica con la misma normalización que la GUI.
+        Permite prever el resultado de cada combinación de $f_s$, $N$ y
+        $f_0$ (por ejemplo, la fuga de la sección~\ref{sec:fuga}).
+\end{itemize}
+
+\begin{lstlisting}[language=Matlab,caption={Decodificación de una fila y espectro de un solo lado en \texttt{recibir\_tp3.m}.},label={lst:matlab}]
+tok = regexp(row,'^(\d+),([0-9A-F]{8}),([0-9A-F]{8})$','tokens','once');
+if isempty(tok) || str2double(tok{1}) ~= k
+    error('TP3:Frame','Trama incompleta o desordenada.');
+end
+re = double(typecast(uint32(hex2dec(tok{2})),'single'));
+im = double(typecast(uint32(hex2dec(tok{3})),'single'));
+X(k+1) = complex(re,im);
+% ... al completar la trama, en modo FFT:
+A = abs(X(1:N/2+1))/N;
+A(2:end-1) = 2*A(2:end-1);
+plot(ax,(0:N/2)*Fs/N,A);
+\end{lstlisting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Verificación}\label{sec:verificacion}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Procedimiento}
+
+\begin{enumerate}[nosep]
+  \item Conectar el generador a \texttt{J4[2]} (ADC0\_A0) con una senoidal
+        de \qty{1}{\kilo\hertz} y un \emph{offset} que la mantenga dentro
+        del rango del ADC. Conectar la placa a la PC por el USB del
+        MCU-Link.
+  \item Ejecutar \texttt{recibir\_tp3("COMx", 115200)} en MATLAB (con
+        ningún otro programa usando el puerto).
+  \item Con $f_s = \qty{8}{\kilo\sps}$ y $N = 512$, verificar en
+        \emph{bypass} que la GUI muestra la senoidal en el tiempo; pasar a
+        FFT con SW2 y verificar que el pico está en \qty{1}{\kilo\hertz}.
+  \item Recorrer los tres tamaños con el touchpad a $f_s$ fija, y las cinco
+        velocidades con SW3 a $N$ fijo, verificando en el título de la GUI
+        que $N$ y $f_s$ cambian en el bloque siguiente.
+  \item Repetir con una senoidal de \qty{5}{\kilo\hertz} a
+        \qty{8}{\kilo\sps} y a \qty{16}{\kilo\sps} (aliasing) y con una
+        cuadrada de \qty{500}{\hertz} (armónicos).
+  \item Para los valores numéricos, cerrar la GUI y capturar una trama con
+        \texttt{diagnosticar\_tp3}.
+\end{enumerate}
+
+\subsection{Verificación por simulación}
+
+Antes de medir en la placa se calculó en la PC, con
+\archivo{explorar_fft_tp3.m}, el espectro esperado para $f_s =
+\qty{8}{\kilo\sps}$ y $N = 512$. Con $f_0 = \qty{1000}{\hertz}$ el script
+informa una ventana de \qty{64}{\milli\second}, una separación de
+\qty{15.625}{\hertz} y un único pico en \qty{1000}{\hertz} de amplitud
+$0{,}5$; con $f_0 = \qty{1005}{\hertz}$ aparece la fuga de la
+tabla~\ref{tab:fuga}.
+
+\captura[0.32\textheight]{img/sim-fuga-1000.png}{MATLAB}{\archivo{explorar_fft_tp3.m}
+con $f_0 = \qty{1000}{\hertz}$, $f_s = \qty{8}{\kilo\sps}$, $N = 512$: la
+senoidal tiene un número entero de ciclos y cae en un solo
+coeficiente.}{fig:sim-1000}
+
+\captura[0.32\textheight]{img/sim-fuga-1005.png}{MATLAB}{\archivo{explorar_fft_tp3.m}
+con $f_0 = \qty{1005}{\hertz}$: fuga espectral hacia los coeficientes
+vecinos.}{fig:sim-1005}
+
+\subsection{Transmisión y modo \emph{bypass}}
+
+\captura[0.3\textheight]{img/terminal-trama.png}{Terminal serie}{Comienzo de
+una trama recibida: cabecera, primeras filas.}{fig:terminal}
+
+\captura{img/gui-bypass-8k.png}{GUI de MATLAB}{Modo \emph{bypass}: senoidal
+de \qty{1}{\kilo\hertz} muestreada a \qty{8}{\kilo\sps}, $N = 512$
+(\qty{64}{\milli\second}, 64 ciclos).}{fig:gui-bypass}
+
+\subsection{Espectro al variar el tamaño de la ventana}
+
+A $f_s = \qty{8}{\kilo\sps}$, \qty{1}{\kilo\hertz} es múltiplo de $\Delta f$
+para los tres tamaños (coeficientes 64, 128 y 256), así que el pico debe
+quedar en \qty{1000}{\hertz} con la amplitud de la senoidal.
+
+\captura{img/gui-fft-8k-512.png}{GUI de MATLAB}{FFT de una senoidal de
+\qty{1}{\kilo\hertz} a \qty{8}{\kilo\sps} con $N = 512$
+($\Delta f = \qty{15.6}{\hertz}$).}{fig:gui-8k-512}
+
+\captura{img/gui-fft-8k-1024.png}{GUI de MATLAB}{Igual que la
+figura~\ref{fig:gui-8k-512} con $N = 1024$
+($\Delta f = \qty{7.8}{\hertz}$).}{fig:gui-8k-1024}
+
+\captura{img/gui-fft-8k-2048.png}{GUI de MATLAB}{Igual que la
+figura~\ref{fig:gui-8k-512} con $N = 2048$
+($\Delta f = \qty{3.9}{\hertz}$).}{fig:gui-8k-2048}
+
+\subsection{Espectro al variar la frecuencia de muestreo}
+
+A $N = 512$ y velocidades mayores, \qty{1}{\kilo\hertz} ya no es múltiplo de
+$\Delta f$: el pico se desplaza al coeficiente más cercano y aparece fuga.
+La tabla~\ref{tab:medido} incluye el coeficiente esperado.
+
+\captura{img/gui-fft-22k-512.png}{GUI de MATLAB}{FFT de una senoidal de
+\qty{1}{\kilo\hertz} a \qty{22}{\kilo\sps} con $N = 512$
+($\Delta f = \qty{43}{\hertz}$).}{fig:gui-22k-512}
+
+\captura{img/gui-fft-48k-512.png}{GUI de MATLAB}{FFT de una senoidal de
+\qty{1}{\kilo\hertz} a \qty{48}{\kilo\sps} con $N = 512$
+($\Delta f = \qty{93.7}{\hertz}$).}{fig:gui-48k-512}
+
+\subsection{Aliasing y armónicos}
+
+El LPADC0 no tiene filtro antialias a la entrada, así que una componente por
+encima de $f_s/2$ aparece reflejada en $|f - m f_s|$. Una senoidal de
+\qty{5}{\kilo\hertz} muestreada a \qty{8}{\kilo\sps} debe verse en
+\qty{3}{\kilo\hertz}; a \qty{16}{\kilo\sps}, en su frecuencia real. Una
+cuadrada de \qty{500}{\hertz} y amplitud $A$ tiene sólo armónicos impares,
+de amplitud $4A/(\pi m)$; a \qty{8}{\kilo\sps} los que superan
+\qty{4}{\kilo\hertz} se pliegan sobre la banda.
+
+\captura{img/gui-alias-8k.png}{GUI de MATLAB}{Senoidal de
+\qty{5}{\kilo\hertz} a \qty{8}{\kilo\sps}: aparece en
+\qty{3}{\kilo\hertz}.}{fig:gui-alias-8k}
+
+\captura{img/gui-alias-16k.png}{GUI de MATLAB}{La misma senoidal a
+\qty{16}{\kilo\sps}: aparece en \qty{5}{\kilo\hertz}.}{fig:gui-alias-16k}
+
+\captura{img/gui-cuadrada-8k.png}{GUI de MATLAB}{Cuadrada de
+\qty{500}{\hertz} a \qty{8}{\kilo\sps}: armónicos impares y armónicos
+plegados.}{fig:gui-cuadrada}
+
+\subsection{Valores medidos}
+
+\begin{table}[H]
+\centering
+\caption{Pico principal esperado y medido (con \archivo{diagnosticar_tp3.m}).
+El esperado es el coeficiente más cercano a la frecuencia de entrada.}
+\label{tab:medido}
+\footnotesize
+\begin{tabular}{@{}r r r r r r r@{}}
+\toprule
+\textbf{$f_s$ [Hz]} & \textbf{$N$} & \textbf{$\Delta f$ [Hz]} &
+\textbf{$f_{\text{in}}$ [Hz]} & \textbf{Pico esperado [Hz]} &
+\textbf{Pico medido [Hz]} & \textbf{Amplitud medida}\\
+\midrule
+\num{8000}     & 512  & \num{15.63} & \num{1000} & \num{1000}    & \completar{} & \completar{}\\
+\num{8000}     & 1024 & \num{7.81}  & \num{1000} & \num{1000}    & \completar{} & \completar{}\\
+\num{8000}     & 2048 & \num{3.91}  & \num{1000} & \num{1000}    & \completar{} & \completar{}\\
+\num{22000.59} & 512  & \num{42.97} & \num{1000} & \num{988.31}  & \completar{} & \completar{}\\
+\num{47984.64} & 512  & \num{93.72} & \num{1000} & \num{1030.92} & \completar{} & \completar{}\\
+\num{8000}     & 512  & \num{15.63} & \num{5000} & \num{3000}    & \completar{} & \completar{}\\
+\num{15998.29} & 512  & \num{31.25} & \num{5000} & \num{4999.47} & \completar{} & \completar{}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Cumplimiento de los requerimientos}
+
+\begin{table}[H]
+\centering
+\caption{Verificación de los requerimientos de la consigna.}
+\label{tab:cumplimiento}
+\begin{tabular}{@{}l p{6.8cm} l l@{}}
+\toprule
+\textbf{Req.} & \textbf{Cómo se implementa} & \textbf{Evidencia} & \textbf{Resultado}\\
+\midrule
+\ref{req:fs}    & Cadena CTIMER0 + INPUTMUX + LPADC0 del Laboratorio~1; SW3
+                  elige la $f_s$; cambio de $f_s$ con descarte del bloque
+                & Figuras~\ref{fig:gui-8k-512}, \ref{fig:gui-48k-512} & \checkmark\\
+\ref{req:n}     & \texttt{buffer\_in[2048]}; el touchpad elige 512, 1024 o
+                  2048, aplicado al comenzar el bloque
+                & Figuras~\ref{fig:gui-8k-512} a~\ref{fig:gui-8k-2048}
+                & \completar{verificar}\\
+\ref{req:fft}   & \texttt{arm\_cfft\_f32()} con la instancia del tamaño del
+                  bloque
+                & Tabla~\ref{tab:medido} & \checkmark\\
+\ref{req:tecla} & SW2 alterna FFT y \emph{bypass}; el resultado va a
+                  \texttt{buffer\_out}, distinto de \texttt{buffer\_in}
+                & Figuras~\ref{fig:gui-bypass} y~\ref{fig:gui-8k-512} & \checkmark\\
+\ref{req:sci}   & LPUART (LP\_FLEXCOMM4) a \num{115200}~bit/s, trama con
+                  cabecera, $N$ filas y \texttt{END}
+                & Figura~\ref{fig:terminal} & \checkmark\\
+\ref{req:gui}   & \archivo{recibir_tp3.m}: espectro de un solo lado en hertz
+                  o señal en el tiempo
+                & Figuras~\ref{fig:gui-bypass} a~\ref{fig:gui-cuadrada} & \checkmark\\
+\ref{req:concl} & Análisis de resolución, tiempos y fuga
+                & Secciones~\ref{sec:resolucion}, \ref{sec:tiempos}
+                  y~\ref{sec:conclusiones} & \checkmark\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\ejercicio{Conclusiones}\label{sec:conclusiones}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Se implementó sobre la FRDM-MCXN947 una aplicación que adquiere la señal con
+la cadena del Laboratorio~1 a cinco velocidades de muestreo, la guarda en
+bloques de 512, 1024 o 2048 muestras, les aplica la FFT con
+\texttt{arm\_cfft\_f32()} de CMSIS-DSP (o las deja pasar sin transformar, en
+\emph{bypass}) hacia un buffer de salida distinto del de entrada, y envía el
+resultado por la UART a una GUI de MATLAB que dibuja el espectro o la señal.
+SW3 elige la frecuencia de muestreo, SW2 el modo y el touchpad el tamaño de
+la ventana, sin recompilar.
+
+\subsection{Efecto de la frecuencia de muestreo y del tamaño de la ventana}
+
+\begin{itemize}
+  \item \textbf{La resolución depende sólo de la duración de la ventana.}
+        $\Delta f = f_s/N = 1/T_v$: para distinguir dos componentes
+        separadas $\delta f$ hace falta observar la señal durante al menos
+        $1/\delta f$ segundos, y eso se logra con más muestras o con menor
+        $f_s$. Subir $f_s$ con $N$ fijo amplía el ancho de banda analizado
+        ($f_s/2$) pero acorta la ventana y empeora la resolución en la misma
+        proporción (de \qty{15.6}{\hertz} a \qty{93.7}{\hertz} al pasar de
+        \qty{8}{\kilo\sps} a \qty{48}{\kilo\sps} con $N = 512$). Para cada
+        señal conviene la menor $f_s$ que cumpla con Nyquist y el mayor $N$
+        que se pueda pagar.
+  \item \textbf{La grilla de frecuencias se mueve con $f_s$ y con $N$.} Una
+        misma senoidal puede caer justo en un coeficiente con una
+        combinación (\qty{1}{\kilo\hertz} a \qty{8}{\kilo\sps}) y entre dos
+        con otra (a \qty{22}{\kilo\sps} o \qty{48}{\kilo\sps}), con un error
+        de amplitud de hasta \qty{3.92}{\deci\bel} y fuga hacia los
+        coeficientes vecinos. Duplicar $N$ achica ese error de frecuencia a
+        la mitad pero no lo elimina; para medir amplitudes con precisión hay
+        que aplicar una ventana.
+  \item \textbf{Una ventana más larga baja el piso de ruido por
+        coeficiente.} El ruido de cuantización se reparte entre los $N$
+        coeficientes mientras que la energía de una senoidal se concentra en
+        uno, así que cada vez que se duplica $N$ el piso de ruido baja
+        \qty{3}{\deci\bel} respecto del tono y se pueden ver componentes más
+        débiles.
+  \item \textbf{Una ventana más larga cuesta más en todo lo demás.} La
+        memoria crece con $N$, el cálculo con $N\log_2 N$, el tiempo de
+        transmisión con $N$ y la latencia (el tiempo hasta tener el primer
+        coeficiente) con $T_v$. Además, una ventana larga promedia la señal
+        durante más tiempo: si la señal cambia dentro de la ventana, el
+        espectro mezcla los distintos estados. Es el compromiso entre
+        resolución en frecuencia y resolución temporal.
+  \item \textbf{La frecuencia de muestreo fija también el aliasing.} Sin
+        filtro antialias, toda componente por encima de $f_s/2$ se pliega
+        dentro de la banda y es indistinguible de una componente real;
+        subir $f_s$ es la única defensa en este sistema.
+  \item \textbf{En esta implementación el costo de la FFT no es el cuello de
+        botella.} El cálculo dura del orden de un milisegundo, mientras que
+        la trama tarda entre uno y cuatro segundos en salir por la UART. El
+        período de refresco depende casi sólo de $N$ y casi nada de $f_s$
+        (tabla~\ref{tab:tiempos}).
+\end{itemize}
+
+\completar{Comentar lo observado en las figuras~\ref{fig:gui-8k-512}
+a~\ref{fig:gui-cuadrada} y en la tabla~\ref{tab:medido}: ancho del pico y
+piso de ruido al aumentar $N$, desplazamiento del pico y fuga al aumentar
+$f_s$, frecuencia aparente de la senoidal de \qty{5}{\kilo\hertz} y
+amplitud de los armónicos de la cuadrada.}
+
+\subsection{Decisiones de diseño}
+
+\begin{itemize}[nosep]
+  \item \textbf{Procesamiento por bloques con una bandera de entrega}: la
+        rutina del ADC llena el buffer y el lazo principal lo procesa, sin
+        duplicar buffers ni deshabilitar interrupciones.
+  \item \textbf{Configuración copiada al comenzar cada bloque}: la FFT, la
+        cantidad de filas y la $f_s$ informada corresponden siempre a las
+        muestras, aunque el usuario cambie la selección en el medio.
+  \item \textbf{Descarte del bloque parcial} al cambiar $f_s$ o al perder
+        muestras, para que cada ventana sea continua y uniforme.
+  \item \textbf{FFT en punto flotante} con las instancias precalculadas de
+        CMSIS-DSP, aprovechando la FPU y evitando el escalado de la FFT en
+        punto fijo.
+  \item \textbf{Trama de texto con los bits IEEE-754 en hexadecimal}: exacta,
+        sin soporte de \texttt{printf} de flotantes, con índice y cierre
+        para detectar errores, y con la $f_s$ real en la cabecera.
+  \item \textbf{Touchpad atendido durante la transmisión}, para que siga
+        respondiendo aunque una trama tarde varios segundos.
+  \item \textbf{VREF encendido explícitamente} antes de inicializar el ADC,
+        ya que al quitar el DAC dejó de encenderse como efecto lateral.
+\end{itemize}
+
+\subsection{Mejoras posibles}\label{sec:mejoras}
+
+\begin{itemize}[nosep]
+  \item \textbf{Transmitir menos}: sólo los $N/2+1$ coeficientes no
+        redundantes, en binario y a una velocidad mayor (el COM virtual del
+        MCU-Link admite velocidades mayores que \num{115200}~bit/s),
+        reduciría el tiempo de transmisión más de diez veces.
+  \item \textbf{Usar \texttt{arm\_rfft\_fast\_f32()}}, que aprovecha que la
+        entrada es real y calcula la mitad de operaciones con la mitad de
+        memoria.
+  \item \textbf{Aplicar una ventana} (Hann o Hamming, disponibles en
+        CMSIS-DSP) antes de la FFT para bajar la fuga y el error de
+        amplitud, a cambio de un lóbulo principal más ancho.
+  \item \textbf{Adquisición continua con doble buffer y DMA}, para no
+        perder muestras durante el procesamiento si el enlace lo permitiera,
+        o para promediar varios espectros en la placa antes de enviar uno.
+  \item \textbf{Antirrebote de las teclas}: un rebote de SW2 puede alternar
+        el modo dos veces y dejarlo como estaba.
+  \item \textbf{Barreras de memoria explícitas}: la entrega del bloque
+        depende del orden entre la escritura de \texttt{buffer\_in} (y de
+        la configuración del bloque) y la de \texttt{buffer\_listo}.
+        Funciona porque el núcleo es único y \texttt{buffer\_listo} es
+        \texttt{volatile}, pero declarar también \texttt{volatile} la
+        configuración del bloque o agregar \texttt{\_\_DMB()} haría el
+        código robusto frente a optimizaciones más agresivas del
+        compilador.
+\end{itemize}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\clearpage
+\appendix
+\section{Código fuente}\label{sec:codigo}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+El proyecto completo de MCUXpresso (incluidos los archivos generados por
+Config Tools, los drivers del SDK y CMSIS-DSP) está en la carpeta
+\archivo{TP3/} del repositorio, y los scripts de MATLAB en
+\archivo{TP3/matlab/}. El repositorio es:
+\begin{center}
+\url{https://github.com/Mati-Costamagna/procesamiento-digital-de-senales}
+\end{center}
+
+\end{document}
